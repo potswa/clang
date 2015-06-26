@@ -169,6 +169,10 @@ private:
   /// Expand the arguments of a function-like macro so that we can quickly
   /// return preexpanded tokens from Tokens.
   void ExpandFunctionArguments();
+  
+  /// Replace and rescan one argument.
+  void PreExpandFunctionArgument(const Token &CurTok, int ArgNo,
+                                 SmallVector<Token, 128> &ResultToks);
 
   /// HandleMicrosoftCommentPaste - In microsoft compatibility mode, /##/ pastes
   /// together to form a comment that comments out everything in the current

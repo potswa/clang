@@ -185,7 +185,7 @@ void TokenLexer::ExpandFunctionArguments() {
     if (i != 0 && !Tokens[i-1].is(tok::hashhash) && CurTok.hasLeadingSpace())
       NextTokGetsSpace = true;
 
-    if (CurTok.isOneOf(tok::hash, tok::hashat)) {
+    if (CurTok.is(tok::hash) || CurTok.is(tok::hashat)) {
       int ArgNo = Macro->getArgumentNum(Tokens[i+1].getIdentifierInfo());
       assert(ArgNo != -1 && "Token following # is not an argument?");
 
@@ -262,51 +262,7 @@ void TokenLexer::ExpandFunctionArguments() {
     // argument and substitute the expanded tokens into the result.  This is
     // C99 6.10.3.1p1.
     if (!PasteBefore && !PasteAfter) {
-      const Token *ResultArgToks;
-
-      // Only preexpand the argument if it could possibly need it.  This
-      // avoids some work in common cases.
-      const Token *ArgTok = ActualArgs->getUnexpArgument(ArgNo);
-      if (ActualArgs->ArgNeedsPreexpansion(ArgTok, PP))
-        ResultArgToks = &ActualArgs->getPreExpArgument(ArgNo, Macro, PP)[0];
-      else
-        ResultArgToks = ArgTok;  // Use non-preexpanded tokens.
-
-      // If the arg token expanded into anything, append it.
-      if (ResultArgToks->isNot(tok::eof)) {
-        unsigned FirstResult = ResultToks.size();
-        unsigned NumToks = MacroArgs::getArgLength(ResultArgToks);
-        ResultToks.append(ResultArgToks, ResultArgToks+NumToks);
-
-        // In Microsoft-compatibility mode, we follow MSVC's preprocessing
-        // behavior by not considering single commas from nested macro
-        // expansions as argument separators. Set a flag on the token so we can
-        // test for this later when the macro expansion is processed.
-        if (PP.getLangOpts().MSVCCompat && NumToks == 1 &&
-            ResultToks.back().is(tok::comma))
-          ResultToks.back().setFlag(Token::IgnoredComma);
-
-        // If the '##' came from expanding an argument, turn it into 'unknown'
-        // to avoid pasting.
-        for (unsigned i = FirstResult, e = ResultToks.size(); i != e; ++i) {
-          Token &Tok = ResultToks[i];
-          if (Tok.is(tok::hashhash))
-            Tok.setKind(tok::unknown);
-        }
-
-        if(ExpandLocStart.isValid()) {
-          updateLocForMacroArgTokens(CurTok.getLocation(),
-                                     ResultToks.begin()+FirstResult,
-                                     ResultToks.end());
-        }
-
-        // If any tokens were substituted from the argument, the whitespace
-        // before the first token should match the whitespace of the arg
-        // identifier.
-        ResultToks[FirstResult].setFlagValue(Token::LeadingSpace,
-                                             NextTokGetsSpace);
-        NextTokGetsSpace = false;
-      }
+      PreExpandFunctionArgument(CurTok, ArgNo, ResultToks);
       continue;
     }
 
@@ -319,12 +275,15 @@ void TokenLexer::ExpandFunctionArguments() {
       // that __VA_ARGS__ expands to multiple tokens, avoid a pasting error when
       // the expander trys to paste ',' with the first token of the __VA_ARGS__
       // expansion.
-      if (NonEmptyPasteBefore && ResultToks.size() >= 2 &&
+      if (!PasteAfter && NonEmptyPasteBefore && ResultToks.size() >= 2 &&
           ResultToks[ResultToks.size()-2].is(tok::comma) &&
           (unsigned)ArgNo == Macro->getNumArgs()-1 &&
           Macro->isVariadic()) {
         // Remove the paste operator, report use of the extension.
         PP.Diag(ResultToks.pop_back_val().getLocation(), diag::ext_paste_comma);
+        // Expand the argument as if there was no paste.
+        PreExpandFunctionArgument(CurTok, ArgNo, ResultToks);
+        continue;
       }
 
       ResultToks.append(ArgToks, ArgToks+NumToks);
@@ -403,6 +362,56 @@ void TokenLexer::ExpandFunctionArguments() {
 
     // The preprocessor cache of macro expanded tokens owns these tokens,not us.
     OwnsTokens = false;
+  }
+}
+
+/// Pre-expand the argument and substitute the expanded tokens into the result.
+void TokenLexer::PreExpandFunctionArgument(
+  const Token &CurTok, int ArgNo, SmallVector<Token, 128> &ResultToks) {
+  const Token *ResultArgToks;
+
+  // Only preexpand the argument if it could possibly need it.  This
+  // avoids some work in common cases.
+  const Token *ArgTok = ActualArgs->getUnexpArgument(ArgNo);
+  if (ActualArgs->ArgNeedsPreexpansion(ArgTok, PP))
+    ResultArgToks = &ActualArgs->getPreExpArgument(ArgNo, Macro, PP)[0];
+  else
+    ResultArgToks = ArgTok;  // Use non-preexpanded tokens.
+
+  // If the arg token expanded into anything, append it.
+  if (ResultArgToks->isNot(tok::eof)) {
+    unsigned FirstResult = ResultToks.size();
+    unsigned NumToks = MacroArgs::getArgLength(ResultArgToks);
+    ResultToks.append(ResultArgToks, ResultArgToks+NumToks);
+
+    // In Microsoft-compatibility mode, we follow MSVC's preprocessing
+    // behavior by not considering single commas from nested macro
+    // expansions as argument separators. Set a flag on the token so we can
+    // test for this later when the macro expansion is processed.
+    if (PP.getLangOpts().MSVCCompat && NumToks == 1 &&
+        ResultToks.back().is(tok::comma))
+      ResultToks.back().setFlag(Token::IgnoredComma);
+
+    // If the '##' came from expanding an argument, turn it into 'unknown'
+    // to avoid pasting.
+    for (unsigned i = FirstResult, e = ResultToks.size(); i != e; ++i) {
+      Token &Tok = ResultToks[i];
+      if (Tok.is(tok::hashhash))
+        Tok.setKind(tok::unknown);
+    }
+
+    if(ExpandLocStart.isValid()) {
+      updateLocForMacroArgTokens(CurTok.getLocation(),
+                                 ResultToks.begin()+FirstResult,
+                                 ResultToks.end());
+    }
+
+    // If any tokens were substituted from the argument, the whitespace
+    // before the first token should match the whitespace of the arg
+    // identifier.
+    ResultToks[FirstResult].setFlagValue(Token::LeadingSpace,
+                                         NextTokGetsSpace);
+    NextTokGetsSpace = false;
   }
 }
 
