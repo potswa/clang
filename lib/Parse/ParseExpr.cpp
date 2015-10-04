@@ -2760,6 +2760,8 @@ ExprResult Parser::ParseBlockLiteralExpression() {
                                              /*NumArgs=*/0,
                                              /*EllipsisLoc=*/NoLoc,
                                              /*RParenLoc=*/NoLoc,
+                                             /*AccessorSpec=*/0,
+                                             /*AccessorSpecInfo=*/{},
                                              /*TypeQuals=*/0,
                                              /*RefQualifierIsLvalueRef=*/true,
                                              /*RefQualifierLoc=*/NoLoc,

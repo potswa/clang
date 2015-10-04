@@ -1098,6 +1098,10 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     // compatible with MSVC.
     MaybeParseMicrosoftDeclSpecs(Attr, &DeclEndLoc);
 
+    int LifetimeSpec;
+    DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
+    ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
+    
     // Parse 'mutable'[opt].
     SourceLocation MutableLoc;
     if (TryConsumeToken(tok::kw_mutable, MutableLoc))
@@ -1142,6 +1146,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                                            LParenLoc,
                                            ParamInfo.data(), ParamInfo.size(),
                                            EllipsisLoc, RParenLoc,
+                                           LifetimeSpec, LifetimeSpecInfo,
                                            DS.getTypeQualifiers(),
                                            /*RefQualifierIsLValueRef=*/true,
                                            /*RefQualifierLoc=*/NoLoc,
@@ -1159,12 +1164,13 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                                            LParenLoc, FunLocalRangeEnd, D,
                                            TrailingReturnType),
                   Attr, DeclEndLoc);
-  } else if (Tok.isOneOf(tok::kw_mutable, tok::arrow, tok::kw___attribute) ||
+  } else if (Tok.isOneOf(tok::kw_mutable, tok::kw_export, tok::arrow, tok::kw___attribute) ||
              (Tok.is(tok::l_square) && NextToken().is(tok::l_square))) {
     // It's common to forget that one needs '()' before 'mutable', an attribute
     // specifier, or the result type. Deal with this.
     unsigned TokKind = 0;
     switch (Tok.getKind()) {
+    case tok::kw_export:
     case tok::kw_mutable: TokKind = 0; break;
     case tok::arrow: TokKind = 1; break;
     case tok::kw___attribute:
@@ -1182,6 +1188,10 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     // compatible with GCC.
     ParsedAttributes Attr(AttrFactory);
     MaybeParseGNUAttributes(Attr, &DeclEndLoc);
+
+    int LifetimeSpec;
+    DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
+    ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
 
     // Parse 'mutable', if it's there.
     SourceLocation MutableLoc;
@@ -1209,6 +1219,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                                                /*NumParams=*/0,
                                                /*EllipsisLoc=*/NoLoc,
                                                /*RParenLoc=*/NoLoc,
+                                               LifetimeSpec, LifetimeSpecInfo,
                                                /*TypeQuals=*/0,
                                                /*RefQualifierIsLValueRef=*/true,
                                                /*RefQualifierLoc=*/NoLoc,

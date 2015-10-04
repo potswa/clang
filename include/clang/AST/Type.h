@@ -149,6 +149,16 @@ public:
     /// Assigning into this object requires a lifetime extension.
     OCL_Autoreleasing
   };
+  
+  enum CXXLifetime {
+    LQ_none, // No lifetime-specifier was given.
+    LQ_explicitNone, // export[]
+    LQ_value, // export[=]
+    LQ_ref, // export or export[&]
+    LQ_auto, // export[auto]
+    LQ_const, // export [const], accessor-specifier only
+    LQ_id // export[id], uses name, not loc
+  };
 
   enum {
     /// The maximum supported address space number.
@@ -3929,7 +3939,7 @@ public:
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, getDeducedType(), isDecltypeAuto(), 
-		    isDependentType());
+            isDependentType());
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Deduced,

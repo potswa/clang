@@ -1673,6 +1673,9 @@ Parser::TryParseParameterDeclarationClause(bool *InvalidAsDeclaration,
     ParsedAttributes attrs(AttrFactory);
     MaybeParseMicrosoftAttributes(attrs);
 
+    if (Tok.is(tok::kw_export))
+      return TPResult::True;
+
     // decl-specifier-seq
     // A parameter-declaration's initializer must be preceded by an '=', so
     // decl-specifier-seq '{' is not a parameter in C++11.

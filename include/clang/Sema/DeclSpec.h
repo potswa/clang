@@ -305,6 +305,18 @@ public:
   static const TST TST_atomic = clang::TST_atomic;
   static const TST TST_error = clang::TST_error;
 
+  // lifetime-specifiers and accessor-specifiers
+  // Keep in sync with Qualifiers::CXXLifetime.
+  enum LQ {
+    LQ_none, // No lifetime-specifier was given.
+    LQ_explicitNone, // export[] was specified.
+    LQ_value,
+    LQ_ref,
+    LQ_auto,
+    LQ_const, // accessor-specifier only
+    LQ_id // uses name, not loc
+  };
+
   // type-qualifiers
   enum TQ {   // NOTE: These flags must be kept in sync with Qualifiers::TQ.
     TQ_unspecified = 0,
@@ -1149,6 +1161,14 @@ struct DeclaratorChunk {
 
     void destroy() {}
   };
+  
+  union LifetimeSpecInfo {
+    /// Location of the "export" keyword, if any, or the token after its "[".
+    unsigned loc;
+
+    /// The identifier of a named lifetime, which has a location.
+    IdentifierInfo *name;
+  };
 
   /// ParamInfo - An array of paraminfo objects is allocated whenever a function
   /// declarator is parsed.  There are two interesting styles of parameters
@@ -1160,6 +1180,11 @@ struct DeclaratorChunk {
   struct ParamInfo {
     IdentifierInfo *Ident;
     SourceLocation IdentLoc;
+    
+    /// What kind of accessor specifier? Value according to enum LQ.
+    int lifetimeSpecType;
+    LifetimeSpecInfo lifetimeSpecInfo;
+    
     Decl *Param;
 
     /// DefaultArgTokens - When the parameter's default argument
@@ -1172,8 +1197,13 @@ struct DeclaratorChunk {
     ParamInfo() {}
     ParamInfo(IdentifierInfo *ident, SourceLocation iloc,
               Decl *param,
-              CachedTokens *DefArgTokens = nullptr)
-      : Ident(ident), IdentLoc(iloc), Param(param),
+              CachedTokens *DefArgTokens = nullptr,
+              int lstype = 0,
+              LifetimeSpecInfo lsinfo = {})
+      : Ident(ident), IdentLoc(iloc),
+        lifetimeSpecType( lstype ),
+        lifetimeSpecInfo( lsinfo ),
+        Param(param),
         DefaultArgTokens(DefArgTokens) {}
   };
 
@@ -1195,6 +1225,9 @@ struct DeclaratorChunk {
 
     /// Can this declaration be a constructor-style initializer?
     unsigned isAmbiguous : 1;
+
+    /// What kind of accessor specifier? Value according to enum LQ.
+    unsigned accessorSpecType : 3;
 
     /// \brief Whether the ref-qualifier (if any) is an lvalue reference.
     /// Otherwise, it's an rvalue reference.
@@ -1265,6 +1298,8 @@ struct DeclaratorChunk {
     /// describe the parameters specified by this function declarator.  null if
     /// there are no parameters specified.
     ParamInfo *Params;
+
+    LifetimeSpecInfo accessorSpecInfo;
 
     union {
       /// \brief Pointer to a new[]'d array of TypeAndRange objects that
@@ -1499,6 +1534,7 @@ struct DeclaratorChunk {
                                      ParamInfo *Params, unsigned NumParams,
                                      SourceLocation EllipsisLoc,
                                      SourceLocation RParenLoc,
+                                     int, LifetimeSpecInfo,
                                      unsigned TypeQuals,
                                      bool RefQualifierIsLvalueRef,
                                      SourceLocation RefQualifierLoc,

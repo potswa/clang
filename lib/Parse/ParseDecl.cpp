@@ -2487,6 +2487,56 @@ void Parser::ParseAlignmentSpecifier(ParsedAttributes &Attrs,
                AttributeList::AS_Keyword, EllipsisLoc);
 }
 
+void Parser::ParseLifetimeSpecifier(int &spec,
+  DeclaratorChunk::LifetimeSpecInfo &info) {
+  if (Tok.getKind() != tok::kw_export) {
+    spec = DeclSpec::LQ_none;
+    info.loc = 0;
+    return;
+  }
+  ConsumeToken();
+  
+  BalancedDelimiterTracker T(*this, tok::l_square);
+  if (T.consumeOpen()) {
+    spec = DeclSpec::LQ_ref;
+    info.loc = Tok.getLocation().getRawEncoding();
+    return;
+  }
+  
+  info.loc = Tok.getLocation().getRawEncoding();
+  
+  switch (Tok.getKind()) {
+    default:
+      // TODO Diagnose this.
+    case tok::r_square:
+      spec = DeclSpec::LQ_explicitNone;
+      break;
+    case tok::equal:
+      spec = DeclSpec::LQ_value;
+      ConsumeToken();
+      break;
+    case tok::amp:
+      spec = DeclSpec::LQ_ref;
+      ConsumeToken();
+      break;
+    case tok::kw_auto:
+      spec = DeclSpec::LQ_auto;
+      ConsumeToken();
+      break;
+    case tok::kw_const:
+      spec = DeclSpec::LQ_const;
+      ConsumeToken();
+      break;
+    case tok::identifier:
+      info.name = Tok.getIdentifierInfo();
+      spec = DeclSpec::LQ_id;
+      ConsumeToken();
+      break;
+  }
+  
+  T.consumeClose();
+}
+
 /// Determine whether we're looking at something that might be a declarator
 /// in a simple-declaration. If it can't possibly be a declarator, maybe
 /// diagnose a missing semicolon after a prior tag definition in the decl
@@ -5385,6 +5435,7 @@ void Parser::ParseParenDeclarator(Declarator &D) {
              (getLangOpts().CPlusPlus && Tok.is(tok::ellipsis) &&
               NextToken().is(tok::r_paren)) || // C++ int(...)
              isDeclarationSpecifier() ||       // 'int(int)' is a function.
+             Tok.is(tok::kw_export) ||         // 'int(export int)' is a function.
              isCXX11AttributeSpecifier()) {    // 'int([[]]int)' is a function.
     // This handles C99 6.7.5.3p11: in "typedef int X; void foo(X)", X is
     // considered to be a type, not a K&R identifier-list.
@@ -5473,6 +5524,8 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   SourceLocation EllipsisLoc;
 
   DeclSpec DS(AttrFactory);
+  int accessorSpec = 0;
+  DeclaratorChunk::LifetimeSpecInfo accessorSpecInfo;
   bool RefQualifierIsLValueRef = true;
   SourceLocation RefQualifierLoc;
   SourceLocation ConstQualifierLoc;
@@ -5525,6 +5578,9 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
       // correct the order if the user gets it wrong. Ideally we should deal
       // with the pure-specifier in the same way.
 
+      // Parse accessor-specifier[opt]
+      ParseLifetimeSpecifier(accessorSpec, accessorSpecInfo);
+      
       // Parse cv-qualifier-seq[opt].
       ParseTypeQualifierListOpt(DS, AR_NoAttributesParsed,
                                 /*AtomicAllowed*/ false);
@@ -5615,6 +5671,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
                                              LParenLoc,
                                              ParamInfo.data(), ParamInfo.size(),
                                              EllipsisLoc, RParenLoc,
+                                             accessorSpec, accessorSpecInfo,
                                              DS.getTypeQualifiers(),
                                              RefQualifierIsLValueRef,
                                              RefQualifierLoc, ConstQualifierLoc,
@@ -5791,6 +5848,12 @@ void Parser::ParseParameterDeclarationClause(
     // too much hassle.
     DS.takeAttributesFrom(FirstArgAttrs);
 
+    int lifetimeSpec;
+    DeclaratorChunk::LifetimeSpecInfo lifetimeInfo;
+    ParseLifetimeSpecifier(lifetimeSpec, lifetimeInfo);
+    
+    // TODO diagnose lifetimeSpec == LQ_const
+    
     ParseDeclarationSpecifiers(DS);
 
 
@@ -5889,7 +5952,8 @@ void Parser::ParseParameterDeclarationClause(
 
       ParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
                                           ParmDeclarator.getIdentifierLoc(), 
-                                          Param, DefArgToks));
+                                          Param, DefArgToks,
+                                          lifetimeSpec, lifetimeInfo));
     }
 
     if (TryConsumeToken(tok::ellipsis, EllipsisLoc)) {

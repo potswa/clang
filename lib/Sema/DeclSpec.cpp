@@ -166,6 +166,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
                                              unsigned NumParams,
                                              SourceLocation EllipsisLoc,
                                              SourceLocation RParenLoc,
+                                             int LifetimeSpec,
+                                             LifetimeSpecInfo LSInfo,
                                              unsigned TypeQuals,
                                              bool RefQualifierIsLvalueRef,
                                              SourceLocation RefQualifierLoc,
@@ -201,6 +203,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
   I.Fun.LParenLoc               = LParenLoc.getRawEncoding();
   I.Fun.EllipsisLoc             = EllipsisLoc.getRawEncoding();
   I.Fun.RParenLoc               = RParenLoc.getRawEncoding();
+  I.Fun.accessorSpecType        = LifetimeSpec;
+  I.Fun.accessorSpecInfo        = LSInfo;
   I.Fun.DeleteParams            = false;
   I.Fun.TypeQuals               = TypeQuals;
   I.Fun.NumParams               = NumParams;
