@@ -44,6 +44,25 @@ bool Qualifiers::isStrictSupersetOf(Qualifiers Other) const {
      (hasObjCLifetime() && !Other.hasObjCLifetime()));
 }
 
+bool QualType::isCanonicalAsParam() const {
+  if (!isCanonical()) return false;
+  if (hasLocalQualifiers()) {
+    Qualifiers lq = getExtQualsUnsafe()->getQualifiers();
+    if (! getTypePtr()->isObjCIndirectLifetimeType()) {
+      if (lq.getCXXLifetime() == Qualifiers::LQ_explicitNone)
+        return false;
+      lq.removeObjCLifetime(); // Remove C++ lifetime.
+    }
+    if (lq.hasQualifiers()) return false;
+  }
+
+  const Type *T = getTypePtr();
+  if (T->isVariablyModifiedType() && T->hasSizedVLAType())
+    return false;
+
+  return !isa<FunctionType>(T) && !isa<ArrayType>(T);
+}
+
 const IdentifierInfo* QualType::getBaseTypeIdentifier() const {
   const Type* ty = getTypePtr();
   NamedDecl *ND = nullptr;
@@ -2830,7 +2849,7 @@ void FunctionProtoType::Profile(llvm::FoldingSetNodeID &ID, QualType Result,
                 (epi.TypeQuals << 1) +
                 (epi.RefQualifier << 9) +
                 (epi.ExceptionSpec.Type << 11) +
-                (epi.AccessorSpec << 15));
+                (std::max(1, +epi.AccessorSpec) << 15));
   if (epi.ExceptionSpec.Type == EST_Dynamic) {
     for (QualType Ex : epi.ExceptionSpec.Exceptions)
       ID.AddPointer(Ex.getAsOpaquePtr());

@@ -3038,7 +3038,8 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
     for (unsigned i = 0; i != NumArgs; ++i) {
       QualType arg = ArgArray[i];
       QualType canArg = getCanonicalParamType(arg);
-      if (! canArg->isObjCIndirectLifetimeType() && arg.getQualifiers().hasObjCLifetime()) {
+      if (! canArg->isObjCIndirectLifetimeType() &&
+          arg.getLocalQualifiers().getCXXLifetime() > Qualifiers::LQ_explicitNone) {
         // C++ parameter lifetime specifiers are part of the canonical type,
         // but they are not canonical in the parameter variable types.
         canArg = getCXXLifetimeQualifiedType(canArg, arg.getLocalQualifiers().getCXXLifetime());

@@ -5098,23 +5098,6 @@ inline bool QualType::isCanonical() const {
   return getTypePtr()->isCanonicalUnqualified();
 }
 
-inline bool QualType::isCanonicalAsParam() const {
-  if (!isCanonical()) return false;
-  if (hasLocalQualifiers()) {
-    Qualifiers lq = getExtQualsUnsafe()->getQualifiers();
-    if (! getTypePtr()->isObjCIndirectLifetimeType()) {
-      lq.removeObjCLifetime(); // Remove C++ lifetime.
-    }
-    if (lq.hasQualifiers()) return false;
-  }
-
-  const Type *T = getTypePtr();
-  if (T->isVariablyModifiedType() && T->hasSizedVLAType())
-    return false;
-
-  return !isa<FunctionType>(T) && !isa<ArrayType>(T);
-}
-
 inline bool QualType::isConstQualified() const {
   return isLocalConstQualified() ||
          getCommonPtr()->CanonicalType.isLocalConstQualified();
