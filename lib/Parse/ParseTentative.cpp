@@ -402,7 +402,6 @@ bool Parser::isCXXConditionDeclaration() {
   ///   type-specifier-seq abstract-declarator[opt]
   ///
 bool Parser::isCXXTypeId(TentativeCXXTypeIdContext Context, bool &isAmbiguous) {
-
   isAmbiguous = false;
 
   // C++ 8.2p2:
@@ -821,6 +820,7 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
         (Tok.is(tok::r_paren) ||       // 'int()' is a function.
          // 'int(...)' is a function.
          (Tok.is(tok::ellipsis) && NextToken().is(tok::r_paren)) ||
+         Tok.is(tok::kw_export) ||
          isDeclarationSpecifier())) {   // 'int(int)' is a function.
       // '(' parameter-declaration-clause ')' cv-qualifier-seq[opt]
       //        exception-specification[opt]
@@ -1673,8 +1673,11 @@ Parser::TryParseParameterDeclarationClause(bool *InvalidAsDeclaration,
     ParsedAttributes attrs(AttrFactory);
     MaybeParseMicrosoftAttributes(attrs);
 
-    if (Tok.is(tok::kw_export))
-      return TPResult::True;
+    if (Tok.is(tok::kw_export)) {
+      ConsumeToken();
+      if (Tok.is(tok::l_square) && !SkipUntil(tok::r_square, StopAtSemi))
+        return TPResult::Error;
+    }
 
     // decl-specifier-seq
     // A parameter-declaration's initializer must be preceded by an '=', so
@@ -1781,6 +1784,13 @@ Parser::TPResult Parser::TryParseFunctionDeclarator() {
   if (!SkipUntil(tok::r_paren, StopAtSemi))
     return TPResult::Error;
 
+  // accessor-specifier[opt]
+  if (Tok.is(tok::kw_export)) {
+    ConsumeToken();
+    if (Tok.is(tok::l_square) && !SkipUntil(tok::r_square, StopAtSemi))
+      return TPResult::Error;
+  }
+  
   // cv-qualifier-seq
   while (Tok.isOneOf(tok::kw_const, tok::kw_volatile, tok::kw_restrict))
     ConsumeToken();

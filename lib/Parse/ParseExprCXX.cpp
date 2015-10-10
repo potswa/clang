@@ -1098,7 +1098,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     // compatible with MSVC.
     MaybeParseMicrosoftDeclSpecs(Attr, &DeclEndLoc);
 
-    int LifetimeSpec;
+    DeclaratorChunk::CXXLifetime LifetimeSpec;
     DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
     ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
     
@@ -1189,7 +1189,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     ParsedAttributes Attr(AttrFactory);
     MaybeParseGNUAttributes(Attr, &DeclEndLoc);
 
-    int LifetimeSpec;
+    DeclaratorChunk::CXXLifetime LifetimeSpec;
     DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
     ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
 

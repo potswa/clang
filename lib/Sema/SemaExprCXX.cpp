@@ -1351,7 +1351,7 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
   if (getLangOpts().ObjCAutoRefCount &&
       AllocType.getObjCLifetime() == Qualifiers::OCL_None &&
       AllocType->isObjCLifetimeType()) {
-    AllocType = Context.getLifetimeQualifiedType(AllocType,
+    AllocType = Context.getObjCLifetimeQualifiedType(AllocType,
                                     AllocType->getObjCARCImplicitLifetime());
   }
 

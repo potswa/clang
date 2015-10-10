@@ -1626,16 +1626,30 @@ public:
   /// \brief Return a type with the given lifetime qualifier.
   ///
   /// \pre Neither type.ObjCLifetime() nor \p lifetime may be \c OCL_None.
-  QualType getLifetimeQualifiedType(QualType type,
-                                    Qualifiers::ObjCLifetime lifetime) {
-    assert(type.getObjCLifetime() == Qualifiers::OCL_None);
-    assert(lifetime != Qualifiers::OCL_None);
-
-    Qualifiers qs;
-    qs.addObjCLifetime(lifetime);
-    return getQualifiedType(type, qs);
+  QualType getObjCLifetimeQualifiedType(QualType type,
+                                    Qualifiers::ObjCLifetime lifetime) const {
+    assert(type->isObjCIndirectLifetimeType()
+           && "ObjC lifetime on non-supporting class");
+    return getLifetimeQualifiedType(type, lifetime);
   }
   
+  QualType getCXXLifetimeQualifiedType(QualType type,
+                                    Qualifiers::CXXLifetime lifetime) const {
+    assert(!type->isObjCIndirectLifetimeType()
+           && "C++ lifetime on ObjC type");
+    return getLifetimeQualifiedType(type, lifetime);
+  }
+private:
+  QualType getLifetimeQualifiedType(QualType type,
+                                    int lifetime) const {
+    assert(!type.getObjCLifetime());
+    assert(lifetime);
+
+    Qualifiers qs;
+    qs.addObjCLifetime((Qualifiers::ObjCLifetime) lifetime);
+    return getQualifiedType(type, qs);
+  }
+public:
   /// getUnqualifiedObjCPointerType - Returns version of
   /// Objective-C pointer type with lifetime qualifier removed.
   QualType getUnqualifiedObjCPointerType(QualType type) const {

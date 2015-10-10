@@ -3035,8 +3035,16 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
   if (!isCanonical) {
     SmallVector<QualType, 16> CanonicalArgs;
     CanonicalArgs.reserve(NumArgs);
-    for (unsigned i = 0; i != NumArgs; ++i)
-      CanonicalArgs.push_back(getCanonicalParamType(ArgArray[i]));
+    for (unsigned i = 0; i != NumArgs; ++i) {
+      QualType arg = ArgArray[i];
+      QualType canArg = getCanonicalParamType(arg);
+      if (! canArg->isObjCIndirectLifetimeType() && arg.getQualifiers().hasObjCLifetime()) {
+        // C++ parameter lifetime specifiers are part of the canonical type,
+        // but they are not canonical in the parameter variable types.
+        canArg = getCXXLifetimeQualifiedType(canArg, arg.getLocalQualifiers().getCXXLifetime());
+      }
+      CanonicalArgs.push_back(canArg);
+    }
 
     FunctionProtoType::ExtProtoInfo CanonicalEPI = EPI;
     CanonicalEPI.HasTrailingReturn = false;

@@ -157,7 +157,7 @@ public:
     LQ_ref, // export or export[&]
     LQ_auto, // export[auto]
     LQ_const, // export [const], accessor-specifier only
-    LQ_id // export[id], uses name, not loc
+    LQ_id // export[id], the identifier is stashed in an attribute.
   };
 
   enum {
@@ -299,6 +299,9 @@ public:
   bool hasObjCLifetime() const { return Mask & LifetimeMask; }
   ObjCLifetime getObjCLifetime() const {
     return ObjCLifetime((Mask & LifetimeMask) >> LifetimeShift);
+  }
+  CXXLifetime getCXXLifetime() const {
+    return (CXXLifetime) getObjCLifetime();
   }
   void setObjCLifetime(ObjCLifetime type) {
     Mask = (Mask & ~LifetimeMask) | (type << LifetimeShift);
@@ -1998,7 +2001,6 @@ template <> inline const Class##Type *Type::castAs() const { \
 }
 #include "clang/AST/TypeNodes.def"
 
-
 /// This class is used for builtin types like 'int'.  Builtin
 /// types are always canonical and have a literal name field.
 class BuiltinType : public Type {
@@ -3059,12 +3061,12 @@ public:
   /// Extra information about a function prototype.
   struct ExtProtoInfo {
     ExtProtoInfo()
-        : Variadic(false), HasTrailingReturn(false), TypeQuals(0),
-          RefQualifier(RQ_None), ConsumedParameters(nullptr) {}
+        : AccessorSpec{}, Variadic(false), HasTrailingReturn(false),
+          TypeQuals(0), RefQualifier(RQ_None), ConsumedParameters(nullptr) {}
 
     ExtProtoInfo(CallingConv CC)
-        : ExtInfo(CC), Variadic(false), HasTrailingReturn(false), TypeQuals(0),
-          RefQualifier(RQ_None), ConsumedParameters(nullptr) {}
+        : ExtInfo(CC), AccessorSpec{}, Variadic(false), HasTrailingReturn(false),
+          TypeQuals(0), RefQualifier(RQ_None), ConsumedParameters(nullptr) {}
 
     ExtProtoInfo withExceptionSpec(const ExceptionSpecInfo &O) {
       ExtProtoInfo Result(*this);
@@ -3073,6 +3075,7 @@ public:
     }
 
     FunctionType::ExtInfo ExtInfo;
+    unsigned char AccessorSpec : 3;
     bool Variadic : 1;
     bool HasTrailingReturn : 1;
     unsigned char TypeQuals;
@@ -3098,6 +3101,9 @@ private:
 
   /// The number of parameters this function has, not counting '...'.
   unsigned NumParams : 15;
+
+  // The accessor-specifier, as a Qualifiers::CXXLifetime value.
+  unsigned AccessorSpec : 3;
 
   /// The number of types in the exception spec, if any.
   unsigned NumExceptions : 9;
@@ -3162,6 +3168,7 @@ public:
   ExtProtoInfo getExtProtoInfo() const {
     ExtProtoInfo EPI;
     EPI.ExtInfo = getExtInfo();
+    EPI.AccessorSpec = AccessorSpec;
     EPI.Variadic = isVariadic();
     EPI.HasTrailingReturn = hasTrailingReturn();
     EPI.ExceptionSpec.Type = getExceptionSpecType();
@@ -3182,6 +3189,9 @@ public:
     return EPI;
   }
 
+  Qualifiers::CXXLifetime getAccessorSpec() const {
+    return (Qualifiers::CXXLifetime) AccessorSpec;
+  }
   /// Get the kind of exception specification on this function.
   ExceptionSpecificationType getExceptionSpecType() const {
     return static_cast<ExceptionSpecificationType>(ExceptionSpecType);
@@ -5090,7 +5100,13 @@ inline bool QualType::isCanonical() const {
 
 inline bool QualType::isCanonicalAsParam() const {
   if (!isCanonical()) return false;
-  if (hasLocalQualifiers()) return false;
+  if (hasLocalQualifiers()) {
+    Qualifiers lq = getExtQualsUnsafe()->getQualifiers();
+    if (! getTypePtr()->isObjCIndirectLifetimeType()) {
+      lq.removeObjCLifetime(); // Remove C++ lifetime.
+    }
+    if (lq.hasQualifiers()) return false;
+  }
 
   const Type *T = getTypePtr();
   if (T->isVariablyModifiedType() && T->hasSizedVLAType())

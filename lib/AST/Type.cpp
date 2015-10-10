@@ -2647,6 +2647,7 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> params,
                    result->isVariablyModifiedType(),
                    result->containsUnexpandedParameterPack(), epi.ExtInfo),
       NumParams(params.size()),
+      AccessorSpec(epi.AccessorSpec),
       NumExceptions(epi.ExceptionSpec.Exceptions.size()),
       ExceptionSpecType(epi.ExceptionSpec.Type),
       HasAnyConsumedParams(epi.ConsumedParameters != nullptr),
@@ -2817,17 +2818,19 @@ void FunctionProtoType::Profile(llvm::FoldingSetNodeID &ID, QualType Result,
   for (unsigned i = 0; i != NumParams; ++i)
     ID.AddPointer(ArgTys[i].getAsOpaquePtr());
   // This method is relatively performance sensitive, so as a performance
-  // shortcut, use one AddInteger call instead of four for the next four
+  // shortcut, use one AddInteger call instead of four for the next five
   // fields.
   assert(!(unsigned(epi.Variadic) & ~1) &&
          !(unsigned(epi.TypeQuals) & ~255) &&
          !(unsigned(epi.RefQualifier) & ~3) &&
          !(unsigned(epi.ExceptionSpec.Type) & ~15) &&
+         !(unsigned(epi.AccessorSpec) & ~7) &&
          "Values larger than expected.");
   ID.AddInteger(unsigned(epi.Variadic) +
                 (epi.TypeQuals << 1) +
                 (epi.RefQualifier << 9) +
-                (epi.ExceptionSpec.Type << 11));
+                (epi.ExceptionSpec.Type << 11) +
+                (epi.AccessorSpec << 15));
   if (epi.ExceptionSpec.Type == EST_Dynamic) {
     for (QualType Ex : epi.ExceptionSpec.Exceptions)
       ID.AddPointer(Ex.getAsOpaquePtr());

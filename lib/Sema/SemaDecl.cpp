@@ -5302,7 +5302,7 @@ bool Sema::inferObjCARCLifetime(ValueDecl *decl) {
       return false;
 
     lifetime = type->getObjCARCImplicitLifetime();
-    type = Context.getLifetimeQualifiedType(type, lifetime);
+    type = Context.getObjCLifetimeQualifiedType(type, lifetime);
     decl->setType(type);
   }
   
@@ -10451,7 +10451,7 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
     } else {
       lifetime = T->getObjCARCImplicitLifetime();
     }
-    T = Context.getLifetimeQualifiedType(T, lifetime);
+    T = Context.getObjCLifetimeQualifiedType(T, lifetime);
   }
 
   ParmVarDecl *New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
@@ -11238,7 +11238,7 @@ NamedDecl *Sema::ImplicitlyDefineFunction(SourceLocation Loc,
                                              /*NumParams=*/0,
                                              /*EllipsisLoc=*/NoLoc,
                                              /*RParenLoc=*/NoLoc,
-                                             /*AccessorSpecifier=*/0,
+                                             /*AccessorSpecifier=*/{},
                                              /*AccessorSpecLoc=*/{},
                                              /*TypeQuals=*/0,
                                              /*RefQualifierIsLvalueRef=*/true,

@@ -306,17 +306,6 @@ public:
   static const TST TST_error = clang::TST_error;
 
   // lifetime-specifiers and accessor-specifiers
-  // Keep in sync with Qualifiers::CXXLifetime.
-  enum LQ {
-    LQ_none, // No lifetime-specifier was given.
-    LQ_explicitNone, // export[] was specified.
-    LQ_value,
-    LQ_ref,
-    LQ_auto,
-    LQ_const, // accessor-specifier only
-    LQ_id // uses name, not loc
-  };
-
   // type-qualifiers
   enum TQ {   // NOTE: These flags must be kept in sync with Qualifiers::TQ.
     TQ_unspecified = 0,
@@ -1162,6 +1151,17 @@ struct DeclaratorChunk {
     void destroy() {}
   };
   
+  // Keep in sync with Qualifiers::CXXLifetime.
+  enum CXXLifetime {
+    LQ_none, // No lifetime-specifier was given.
+    LQ_explicitNone, // export[] was specified.
+    LQ_value,
+    LQ_ref,
+    LQ_auto,
+    LQ_const, // accessor-specifier only
+    LQ_id // uses name, not loc
+  };
+
   union LifetimeSpecInfo {
     /// Location of the "export" keyword, if any, or the token after its "[".
     unsigned loc;
@@ -1180,11 +1180,7 @@ struct DeclaratorChunk {
   struct ParamInfo {
     IdentifierInfo *Ident;
     SourceLocation IdentLoc;
-    
-    /// What kind of accessor specifier? Value according to enum LQ.
-    int lifetimeSpecType;
-    LifetimeSpecInfo lifetimeSpecInfo;
-    
+
     Decl *Param;
 
     /// DefaultArgTokens - When the parameter's default argument
@@ -1193,18 +1189,21 @@ struct DeclaratorChunk {
     /// sequence of tokens to be parsed once the class definition is
     /// complete. Non-NULL indicates that there is a default argument.
     CachedTokens *DefaultArgTokens;
+    
+    CXXLifetime lifetimeSpecType;
+    LifetimeSpecInfo lifetimeSpecInfo;
 
     ParamInfo() {}
     ParamInfo(IdentifierInfo *ident, SourceLocation iloc,
               Decl *param,
               CachedTokens *DefArgTokens = nullptr,
-              int lstype = 0,
-              LifetimeSpecInfo lsinfo = {})
+              CXXLifetime lq = LQ_none,
+              LifetimeSpecInfo lqInfo = {})
       : Ident(ident), IdentLoc(iloc),
-        lifetimeSpecType( lstype ),
-        lifetimeSpecInfo( lsinfo ),
         Param(param),
-        DefaultArgTokens(DefArgTokens) {}
+        DefaultArgTokens(DefArgTokens),
+        lifetimeSpecType(lq),
+        lifetimeSpecInfo(lqInfo) {}
   };
 
   struct TypeAndRange {
@@ -1534,7 +1533,7 @@ struct DeclaratorChunk {
                                      ParamInfo *Params, unsigned NumParams,
                                      SourceLocation EllipsisLoc,
                                      SourceLocation RParenLoc,
-                                     int, LifetimeSpecInfo,
+                                     CXXLifetime, LifetimeSpecInfo,
                                      unsigned TypeQuals,
                                      bool RefQualifierIsLvalueRef,
                                      SourceLocation RefQualifierLoc,

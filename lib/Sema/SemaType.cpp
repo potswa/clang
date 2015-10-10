@@ -693,8 +693,8 @@ static void maybeSynthesizeBlockSignature(TypeProcessingState &state,
       /*NumArgs=*/0,
       /*EllipsisLoc=*/NoLoc,
       /*RParenLoc=*/NoLoc,
-	  /*AccessorSpec=*/0,
-	  /*AccessorSpecInfo=*/{},
+      /*AccessorSpec=*/{},
+      /*AccessorSpecInfo=*/{},
       /*TypeQuals=*/0,
       /*RefQualifierIsLvalueRef=*/true,
       /*RefQualifierLoc=*/NoLoc,
@@ -1776,8 +1776,32 @@ static QualType inferARCLifetimeForPointee(Sema &S, QualType type,
 }
 
 static std::string getFunctionQualifiersAsString(const FunctionProtoType *FnTy){
-  std::string Quals =
-    Qualifiers::fromCVRMask(FnTy->getTypeQuals()).getAsString();
+  std::string Quals;
+  
+  if (auto lq = FnTy->getAccessorSpec()) {
+    Quals += "export[";
+    switch (lq) {
+    case Qualifiers::LQ_explicitNone:
+      break;
+    case Qualifiers::LQ_value:
+      Quals += '=';
+      break;
+    case Qualifiers::LQ_ref:
+      Quals += '&';
+      break;
+    case Qualifiers::LQ_auto:
+      Quals += "auto";
+      break;
+    case Qualifiers::LQ_const:
+      Quals += "const";
+      break;
+    case Qualifiers::LQ_none: // excluded.
+    case Qualifiers::LQ_id: // TODO.
+      ;
+    }
+    Quals += ']';
+  }
+  Quals += Qualifiers::fromCVRMask(FnTy->getTypeQuals()).getAsString();
 
   switch (FnTy->getRefQualifier()) {
   case RQ_None:
@@ -1819,7 +1843,8 @@ static bool checkQualifiedFunction(Sema &S, QualType T, SourceLocation Loc,
                                    QualifiedFunctionKind QFK) {
   // Does T refer to a function type with a cv-qualifier or a ref-qualifier?
   const FunctionProtoType *FPT = T->getAs<FunctionProtoType>();
-  if (!FPT || (FPT->getTypeQuals() == 0 && FPT->getRefQualifier() == RQ_None))
+  if (!FPT || (FPT->getTypeQuals() == 0 && FPT->getRefQualifier() == RQ_None &&
+               FPT->getAccessorSpec() == Qualifiers::LQ_none))
     return false;
 
   S.Diag(Loc, diag::err_compound_qualified_function_type)
@@ -3908,6 +3933,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
 
         FunctionProtoType::ExtProtoInfo EPI;
         EPI.ExtInfo = EI;
+        EPI.AccessorSpec = FTI.accessorSpecType;
         EPI.Variadic = FTI.isVariadic;
         EPI.HasTrailingReturn = FTI.hasTrailingReturnType();
         EPI.TypeQuals = FTI.TypeQuals;
@@ -3984,6 +4010,13 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
             bool Consumed = Param->hasAttr<NSConsumedAttr>();
             ConsumedParameters.push_back(Consumed);
             HasAnyConsumedParameters |= Consumed;
+          }
+
+          if (auto lq = FTI.Params[i].lifetimeSpecType) {
+            if (! ParamTy->isObjCIndirectLifetimeType()) {
+              ParamTy = Context.getCXXLifetimeQualifiedType(ParamTy,
+                                                 (Qualifiers::CXXLifetime) lq);
+            }
           }
 
           ParamTys.push_back(ParamTy);
