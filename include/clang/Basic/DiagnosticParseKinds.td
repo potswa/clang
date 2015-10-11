@@ -332,6 +332,12 @@ def warn_deprecated_register : Warning<
   InGroup<DeprecatedRegister>;
 def err_expected_parentheses_around_typename : Error<
   "expected parentheses around type name in %0 expression">;
+def non_lifetime_spec : Error <
+  "invalid lifetime specifier.">;
+def err_placeholder_lifetime_spec : Error <
+  "lifetime specifier %0 can only apply to a function declaration.">;
+def err_accessor_spec : Error <
+  "accessor specifier export [const] can only apply to a function.">;
 
 def err_expected_case_before_expression: Error<
   "expected 'case' keyword before expression">;

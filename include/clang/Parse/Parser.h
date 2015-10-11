@@ -2304,7 +2304,9 @@ private:
                                bool RequiresArg = false);
   bool ParseRefQualifier(bool &RefQualifierIsLValueRef,
                          SourceLocation &RefQualifierLoc);
-  void ParseLifetimeSpecifier(DeclaratorChunk::CXXLifetime &spec,
+  void ParseLifetimeSpecifier(Declarator const &FD,
+                              Declarator::TheContext ctx,
+                              DeclaratorChunk::CXXLifetime &spec,
                               DeclaratorChunk::LifetimeSpecInfo &info);
   bool isFunctionDeclaratorIdentifierList();
   void ParseFunctionDeclaratorIdentifierList(

@@ -1100,7 +1100,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     DeclaratorChunk::CXXLifetime LifetimeSpec;
     DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
-    ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
+    ParseLifetimeSpecifier(D, D.getContext(), LifetimeSpec, LifetimeSpecInfo);
     
     // Parse 'mutable'[opt].
     SourceLocation MutableLoc;
@@ -1191,7 +1191,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     DeclaratorChunk::CXXLifetime LifetimeSpec;
     DeclaratorChunk::LifetimeSpecInfo LifetimeSpecInfo;
-    ParseLifetimeSpecifier(LifetimeSpec, LifetimeSpecInfo);
+    ParseLifetimeSpecifier(D, D.getContext(), LifetimeSpec, LifetimeSpecInfo);
 
     // Parse 'mutable', if it's there.
     SourceLocation MutableLoc;

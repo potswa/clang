@@ -3726,7 +3726,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       // does not have a K&R-style identifier list), then the arguments are part
       // of the type, otherwise the argument list is ().
       const DeclaratorChunk::FunctionTypeInfo &FTI = DeclType.Fun;
-      IsQualifiedFunction = FTI.TypeQuals || FTI.hasRefQualifier();
+      IsQualifiedFunction = FTI.TypeQuals || FTI.hasRefQualifier() ||
+                            FTI.accessorSpecType;
 
       // Check for auto functions and trailing return type and adjust the
       // return type accordingly.

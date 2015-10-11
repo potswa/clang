@@ -2487,7 +2487,9 @@ void Parser::ParseAlignmentSpecifier(ParsedAttributes &Attrs,
                AttributeList::AS_Keyword, EllipsisLoc);
 }
 
-void Parser::ParseLifetimeSpecifier(DeclaratorChunk::CXXLifetime &spec,
+void Parser::ParseLifetimeSpecifier(Declarator const &FD,
+                                    Declarator::TheContext ctx,
+                                    DeclaratorChunk::CXXLifetime &spec,
                                     DeclaratorChunk::LifetimeSpecInfo &info) {
   if (Tok.getKind() != tok::kw_export) {
     spec = DeclaratorChunk::LQ_none;
@@ -2506,32 +2508,51 @@ void Parser::ParseLifetimeSpecifier(DeclaratorChunk::CXXLifetime &spec,
   info.loc = Tok.getLocation().getRawEncoding();
   
   switch (Tok.getKind()) {
-    default:
-      // TODO Diagnose this.
-    case tok::r_square:
-      spec = DeclaratorChunk::LQ_explicitNone;
-      break;
-    case tok::equal:
-      spec = DeclaratorChunk::LQ_value;
-      ConsumeToken();
-      break;
-    case tok::amp:
-      spec = DeclaratorChunk::LQ_ref;
-      ConsumeToken();
-      break;
-    case tok::kw_auto:
-      spec = DeclaratorChunk::LQ_auto;
-      ConsumeToken();
-      break;
-    case tok::kw_const:
-      spec = DeclaratorChunk::LQ_const;
-      ConsumeToken();
-      break;
-    case tok::identifier:
-      info.name = Tok.getIdentifierInfo();
-      spec = DeclaratorChunk::LQ_id;
-      ConsumeToken();
-      break;
+  default:
+    Diag(Tok, diag::non_lifetime_spec);
+    SkipUntil(tok::r_square, StopAtSemi | StopBeforeMatch);
+    break;
+  case tok::r_square:
+    spec = DeclaratorChunk::LQ_explicitNone;
+    break;
+  case tok::equal:
+    spec = DeclaratorChunk::LQ_value;
+    ConsumeToken();
+    break;
+  case tok::amp:
+    spec = DeclaratorChunk::LQ_ref;
+    ConsumeToken();
+    break;
+  case tok::kw_auto:
+    spec = DeclaratorChunk::LQ_auto;
+    ConsumeToken();
+    break;
+  case tok::kw_const:
+    spec = DeclaratorChunk::LQ_const;
+    ConsumeToken();
+    break;
+  case tok::identifier:
+    info.name = Tok.getIdentifierInfo();
+    spec = DeclaratorChunk::LQ_id;
+    ConsumeToken();
+    break;
+  }
+  
+  if (spec == DeclaratorChunk::LQ_auto || spec == DeclaratorChunk::LQ_const) {
+    if (!FD.isFunctionDeclaratorAFunctionDeclaration()) {
+      Diag(SourceLocation::getFromRawEncoding(info.loc),
+           diag::err_placeholder_lifetime_spec ) <<
+           (spec == DeclaratorChunk::LQ_auto? "export[auto]" : "export [const]");
+      spec = DeclaratorChunk::LQ_none;
+    }
+  }
+  if (spec == DeclaratorChunk::LQ_const) {
+    if (ctx == Declarator::PrototypeContext ||
+        ctx == Declarator::LambdaExprParameterContext) {
+      Diag(SourceLocation::getFromRawEncoding(info.loc),
+           diag::err_accessor_spec );
+      spec = DeclaratorChunk::LQ_none;
+    }
   }
   
   T.consumeClose();
@@ -5579,7 +5600,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
       // with the pure-specifier in the same way.
 
       // Parse accessor-specifier[opt]
-      ParseLifetimeSpecifier(accessorSpec, accessorSpecInfo);
+      ParseLifetimeSpecifier(D, D.getContext(), accessorSpec, accessorSpecInfo);
       
       // Parse cv-qualifier-seq[opt].
       ParseTypeQualifierListOpt(DS, AR_NoAttributesParsed,
@@ -5850,7 +5871,7 @@ void Parser::ParseParameterDeclarationClause(
 
     DeclaratorChunk::CXXLifetime lifetimeSpec;
     DeclaratorChunk::LifetimeSpecInfo lifetimeInfo;
-    ParseLifetimeSpecifier(lifetimeSpec, lifetimeInfo);
+    ParseLifetimeSpecifier(D, Declarator::PrototypeContext, lifetimeSpec, lifetimeInfo);
     
     // TODO diagnose lifetimeSpec == LQ_const
     
