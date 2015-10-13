@@ -482,8 +482,7 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     return Cl::CL_LValue;
 
   //   -- If E2 is a non-static data member [...]. If E1 is an lvalue, then
-  //      E1.E2 is an lvalue; if E1 is an xvalue, then E1.E2 is an xvalue;
-  //      otherwise, it is a prvalue.
+  //      E1.E2 is an lvalue; otherwise, E1.E2 is an xvalue.
   if (isa<FieldDecl>(Member)) {
     // *E1 is an lvalue
     if (E->isArrow())
@@ -491,7 +490,8 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     Expr *Base = E->getBase()->IgnoreParenImpCasts();
     if (isa<ObjCPropertyRefExpr>(Base))
       return Cl::CL_SubObjCPropertySetting;
-    return ClassifyInternal(Ctx, E->getBase());
+    Cl::Kinds BaseKind = ClassifyInternal(Ctx, E->getBase());
+    return BaseKind == Cl::CL_ClassTemporary? Cl::CL_XValue : BaseKind;
   }
 
   //   -- If E2 is a [...] member function, [...]
