@@ -8336,6 +8336,18 @@ public:
                                        AssignmentAction Action,
                                        CheckedConversionKind CCK);
 
+  /// \brief The callback type for TraverseLifetimeAssociations.
+  /// \param E The current subexpression.
+  /// \param extend Whether the subexpression is eligible for lifetime
+  /// extension.
+  /// \returns `true` if subexpressions of E should be visited.
+  typedef std::function<bool(Expr *E, bool extend, Sema &S)> LifetimeVisitor;
+
+  /// \brief Process all the subexpressions that are lifetime-associated with
+  /// the given expression, i.e. those which refer to objects reachable from
+  /// the value of the expression.
+  void TraverseLifetimeAssociations(Expr *, LifetimeVisitor const&);
+
   /// the following "Check" methods will return a valid/converted QualType
   /// or a null QualType (indicating an error diagnostic was issued).
 

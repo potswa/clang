@@ -5775,113 +5775,72 @@ static const InitializedEntity *getEntityForTemporaryLifetimeExtension(
   llvm_unreachable("unknown entity kind");
 }
 
-static void performLifetimeExtension(Expr *Init,
-                                     const InitializedEntity *ExtendingEntity);
+void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
+  struct Traversal { // This is essentially a recursive lambda closure.
+    Sema &S;
+    const LifetimeVisitor &V;
+    
+    // Lifetime extension applies to temporaries whose address is used.
+    // `Extend` is false within an lvalue-to-rvalue conversion, so a temporary
+    // bound to an lvalue is exempt if that lvalue is used as an rvalue.
+    bool Visit(Expr *E, bool Extend) {
+      if (E->getValueKind() == VK_RValue) {
+        if (E->getType()->isPointerType()) {
+          Extend = false;
+        } else if (!E->getType()->isRecordType()) {
+          return true; // Prune values that do not bear references.
+        }
+      }
+      
+      if (!V(E, Extend, S)) return false;
+      
+      // Catch operations that may produce a pointer to a temporary.
+      if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
+        if (Eun->getOpcode() == UO_AddrOf) {
+          Extend = true;
+        }
+      } else if (ImplicitCastExpr *Ec = dyn_cast<ImplicitCastExpr>(E)) {
+        if (Ec->getCastKind() == CK_ArrayToPointerDecay) {
+          Extend = true;
+        }
+      
+      // Skip discarded and unevaluated operands.
+      } else if (BinaryOperator *Ebin = dyn_cast<BinaryOperator>(E)) {
+        if (Ebin->getOpcode() == BO_Comma) {
+          return Visit(Ebin->getRHS(), Extend);
+        }
+      } else if (isa<CXXNewExpr>(E) || isa<UnaryExprOrTypeTraitExpr>(E) ||
+                 isa<CXXUuidofExpr>(E) || isa<CXXTypeidExpr>(E)) {
+        return true;
+      }
+      
+      for (Stmt *Operand : E->children()) {
+        assert (isa<Expr>(Operand));
+        if (!Visit(static_cast<Expr *>(Operand), Extend)) return false;
+      }
+      return true;
+    }
+  };
+  Traversal{*this, V}.Visit(E, true);
+}
 
 /// Update a glvalue expression that is used as the initializer of a reference
 /// to note that its lifetime is extended.
 /// \return \c true if any temporary had its lifetime extended.
 static bool
 performReferenceExtension(Expr *Init,
-                          const InitializedEntity *ExtendingEntity) {
-  // Walk past any constructs which we can lifetime-extend across.
-  Expr *Old;
-  do {
-    Old = Init;
-
-    if (InitListExpr *ILE = dyn_cast<InitListExpr>(Init)) {
-      if (ILE->getNumInits() == 1 && ILE->isGLValue()) {
-        // This is just redundant braces around an initializer. Step over it.
-        Init = ILE->getInit(0);
-      }
+                          const InitializedEntity *ExtendingEntity, Sema &S) {
+  bool didExtend = false;
+  S.TraverseLifetimeAssociations(Init, [&](Expr *Sub, bool Extend, Sema &S) {
+    MaterializeTemporaryExpr *ME;
+    if (Extend && (ME = dyn_cast<MaterializeTemporaryExpr>(Sub))) {
+      ME->setExtendingDecl(ExtendingEntity->getDecl(),
+                           ExtendingEntity->allocateManglingNumber());
+      didExtend = true;
     }
-
-    // Step over any subobject adjustments; we may have a materialized
-    // temporary inside them.
-    SmallVector<const Expr *, 2> CommaLHSs;
-    SmallVector<SubobjectAdjustment, 2> Adjustments;
-    Init = const_cast<Expr *>(
-        Init->skipRValueSubobjectAdjustments(CommaLHSs, Adjustments));
-
-    // Per current approach for DR1376, look through casts to reference type
-    // when performing lifetime extension.
-    if (CastExpr *CE = dyn_cast<CastExpr>(Init))
-      if (CE->getSubExpr()->isGLValue())
-        Init = CE->getSubExpr();
-
-    // FIXME: Per DR1213, subscripting on an array temporary produces an xvalue.
-    // It's unclear if binding a reference to that xvalue extends the array
-    // temporary.
-  } while (Init != Old);
-
-  if (MaterializeTemporaryExpr *ME = dyn_cast<MaterializeTemporaryExpr>(Init)) {
-    // Update the storage duration of the materialized temporary.
-    // FIXME: Rebuild the expression instead of mutating it.
-    ME->setExtendingDecl(ExtendingEntity->getDecl(),
-                         ExtendingEntity->allocateManglingNumber());
-    performLifetimeExtension(ME->GetTemporaryExpr(), ExtendingEntity);
     return true;
-  }
-
-  return false;
-}
-
-/// Update a prvalue expression that is going to be materialized as a
-/// lifetime-extended temporary.
-static void performLifetimeExtension(Expr *Init,
-                                     const InitializedEntity *ExtendingEntity) {
-  // Dig out the expression which constructs the extended temporary.
-  SmallVector<const Expr *, 2> CommaLHSs;
-  SmallVector<SubobjectAdjustment, 2> Adjustments;
-  Init = const_cast<Expr *>(
-      Init->skipRValueSubobjectAdjustments(CommaLHSs, Adjustments));
-
-  if (CXXBindTemporaryExpr *BTE = dyn_cast<CXXBindTemporaryExpr>(Init))
-    Init = BTE->getSubExpr();
-
-  if (CXXStdInitializerListExpr *ILE =
-          dyn_cast<CXXStdInitializerListExpr>(Init)) {
-    performReferenceExtension(ILE->getSubExpr(), ExtendingEntity);
-    return;
-  }
-
-  if (InitListExpr *ILE = dyn_cast<InitListExpr>(Init)) {
-    if (ILE->getType()->isArrayType()) {
-      for (unsigned I = 0, N = ILE->getNumInits(); I != N; ++I)
-        performLifetimeExtension(ILE->getInit(I), ExtendingEntity);
-      return;
-    }
-
-    if (CXXRecordDecl *RD = ILE->getType()->getAsCXXRecordDecl()) {
-      assert(RD->isAggregate() && "aggregate init on non-aggregate");
-
-      // If we lifetime-extend a braced initializer which is initializing an
-      // aggregate, and that aggregate contains reference members which are
-      // bound to temporaries, those temporaries are also lifetime-extended.
-      if (RD->isUnion() && ILE->getInitializedFieldInUnion() &&
-          ILE->getInitializedFieldInUnion()->getType()->isReferenceType())
-        performReferenceExtension(ILE->getInit(0), ExtendingEntity);
-      else {
-        unsigned Index = 0;
-        for (const auto *I : RD->fields()) {
-          if (Index >= ILE->getNumInits())
-            break;
-          if (I->isUnnamedBitfield())
-            continue;
-          Expr *SubInit = ILE->getInit(Index);
-          if (I->getType()->isReferenceType())
-            performReferenceExtension(SubInit, ExtendingEntity);
-          else if (isa<InitListExpr>(SubInit) ||
-                   isa<CXXStdInitializerListExpr>(SubInit))
-            // This may be either aggregate-initialization of a member or
-            // initialization of a std::initializer_list object. Either way,
-            // we should recursively lifetime-extend that initializer.
-            performLifetimeExtension(SubInit, ExtendingEntity);
-          ++Index;
-        }
-      }
-    }
-  }
+  });
+  return didExtend;
 }
 
 static void warnOnLifetimeExtension(Sema &S, const InitializedEntity &Entity,
@@ -6270,7 +6229,7 @@ InitializationSequence::Perform(Sema &S,
       // to the result of a cast to reference type.
       if (const InitializedEntity *ExtendingEntity =
               getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(CurInit.get(), ExtendingEntity))
+        if (performReferenceExtension(CurInit.get(), ExtendingEntity,S))
           warnOnLifetimeExtension(S, Entity, CurInit.get(),
                                   /*IsInitializerList=*/false,
                                   ExtendingEntity->getDecl());
@@ -6294,7 +6253,7 @@ InitializationSequence::Perform(Sema &S,
       // entity's lifetime.
       if (const InitializedEntity *ExtendingEntity =
               getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(MTE, ExtendingEntity))
+        if (performReferenceExtension(MTE, ExtendingEntity,S))
           warnOnLifetimeExtension(S, Entity, CurInit.get(), /*IsInitializerList=*/false,
                                   ExtendingEntity->getDecl());
 
@@ -6702,7 +6661,7 @@ InitializationSequence::Perform(Sema &S,
       // entity's lifetime.
       if (const InitializedEntity *ExtendingEntity =
               getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(MTE, ExtendingEntity))
+        if (performReferenceExtension(MTE, ExtendingEntity,S))
           warnOnLifetimeExtension(S, Entity, CurInit.get(),
                                   /*IsInitializerList=*/true,
                                   ExtendingEntity->getDecl());
