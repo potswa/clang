@@ -5794,6 +5794,42 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
       
       if (!V(E, Extend, S)) return false;
       
+      // Process function calls according to the signature.
+      FunctionProtoType const *F = nullptr;
+      CallExpr::arg_range args = { {}, {} };
+      if (CXXConstructExpr *Ect = dyn_cast<CXXConstructExpr>(E)) {
+        F = static_cast<FunctionProtoType const *>
+            (Ect->getConstructor()->getType().getCanonicalType().getTypePtr());
+        args = Ect->arguments();
+        
+        // Temporaries are materialized inside redundant move operations. (Why?)
+        // Ignore the constructor and use the enclosing lifetime association.
+        if (Ect->getConstructor()->isMoveConstructor() &&
+            isa<MaterializeTemporaryExpr>(*args.begin()))
+          return Visit(*args.begin(), Extend);
+      
+      } else if (CallExpr *Ec = dyn_cast<CallExpr>(E)) {
+        F = dyn_cast<FunctionProtoType>
+              (Ec->getCallee()->getType().getCanonicalType().getTypePtr());
+        if (!F) return true; // Prune FunctionNoProtoType (K&R) calls.
+        args = Ec->arguments();
+        
+        // If this is a member call, associate the object expression.
+        if (Qualifiers::CXXLifetime lq = F->getAccessorSpec()) {
+          auto Em = static_cast<CXXMemberCallExpr *>(Ec);
+          Visit(Em->getImplicitObjectArgument(), lq == Qualifiers::LQ_ref);
+        }
+      }
+      if (F) {
+        unsigned px = 0;
+        for (Expr *arg : args) {
+          Qualifiers::CXXLifetime lq = F->getParamType(px).getCXXLifetime();
+          if (!Visit(arg, lq == Qualifiers::LQ_ref)) return false;
+          ++ px;
+        }
+        return true;
+      }
+      
       // Catch operations that may produce a pointer to a temporary.
       if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
         if (Eun->getOpcode() == UO_AddrOf) {

@@ -989,6 +989,10 @@ public:
   Qualifiers::ObjCLifetime getObjCLifetime() const {
     return getQualifiers().getObjCLifetime();
   }
+  
+  Qualifiers::CXXLifetime getCXXLifetime() const {
+    return getQualifiers().getCXXLifetime();
+  }
 
   bool hasNonTrivialObjCLifetime() const {
     return getQualifiers().hasNonTrivialObjCLifetime();

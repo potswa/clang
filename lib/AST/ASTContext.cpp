@@ -3024,7 +3024,7 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
   // Determine whether the type being created is already canonical or not.
   bool isCanonical =
     EPI.ExceptionSpec.Type == EST_None && isCanonicalResultType(ResultTy) &&
-    !EPI.HasTrailingReturn;
+    !EPI.HasTrailingReturn && EPI.AccessorSpec != Qualifiers::LQ_explicitNone;
   for (unsigned i = 0; i != NumArgs && isCanonical; ++i)
     if (!ArgArray[i].isCanonicalAsParam())
       isCanonical = false;
@@ -3050,6 +3050,8 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
     FunctionProtoType::ExtProtoInfo CanonicalEPI = EPI;
     CanonicalEPI.HasTrailingReturn = false;
     CanonicalEPI.ExceptionSpec = FunctionProtoType::ExceptionSpecInfo();
+    if (EPI.AccessorSpec == Qualifiers::LQ_explicitNone)
+      CanonicalEPI.AccessorSpec = Qualifiers::LQ_none;
 
     // Adjust the canonical function result type.
     CanQualType CanResultTy = getCanonicalFunctionResultType(ResultTy);
