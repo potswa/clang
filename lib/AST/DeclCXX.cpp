@@ -388,14 +388,18 @@ void CXXRecordDecl::addedClassSubobject(CXXRecordDecl *Subobj) {
     data().NeedOverloadResolutionForDestructor = true;
   }
 
-  data().MoveConstructorLifetimeQual = std::max<unsigned>(
-    data().MoveConstructorLifetimeQual, Subobj->moveConstructorLifetimeQual());
-  data().CopyConstructorLifetimeQual = std::max<unsigned>(
-    data().CopyConstructorLifetimeQual, Subobj->copyConstructorLifetimeQual());
-  data().MoveAssignmentLifetimeQual = std::max<unsigned>(
-    data().MoveAssignmentLifetimeQual, Subobj->moveAssignmentLifetimeQual());
-  data().CopyAssignmentLifetimeQual = std::max<unsigned>(
-    data().CopyAssignmentLifetimeQual, Subobj->copyAssignmentLifetimeQual());
+  if (~data().DeclaredSpecialMembers & SMF_MoveConstructor)
+    data().MoveConstructorLifetimeQual = std::max<unsigned>(
+      data().MoveConstructorLifetimeQual, Subobj->moveConstructorLifetimeQual());
+  if (~data().DeclaredSpecialMembers & SMF_CopyConstructor)
+    data().CopyConstructorLifetimeQual = std::max<unsigned>(
+      data().CopyConstructorLifetimeQual, Subobj->copyConstructorLifetimeQual());
+  if (~data().DeclaredSpecialMembers & SMF_MoveAssignment)
+    data().MoveAssignmentLifetimeQual = std::max<unsigned>(
+      data().MoveAssignmentLifetimeQual, Subobj->moveAssignmentLifetimeQual());
+  if (~data().DeclaredSpecialMembers & SMF_CopyAssignment)
+    data().CopyAssignmentLifetimeQual = std::max<unsigned>(
+      data().CopyAssignmentLifetimeQual, Subobj->copyAssignmentLifetimeQual());
 }
 
 bool CXXRecordDecl::hasAnyDependentBases() const {
@@ -629,6 +633,28 @@ void CXXRecordDecl::addedMember(Decl *D) {
         // This is an extension in C++03.
         data().PlainOldData = false;
       }
+
+      if (SMKind & (SMF_CopyConstructor|SMF_MoveConstructor|
+                    SMF_CopyAssignment|SMF_MoveAssignment)) {
+        int lq = Method->getParamDecl(0)->getType().
+                 getQualifiers().getCXXLifetime();
+        // Use LQ_none as canonical because it is zero.
+        if (lq == Qualifiers::LQ_explicitNone) lq = Qualifiers::LQ_none;
+        // If the declared type is export[auto], calculate it lazily using
+        // the definition.
+        if (lq == Qualifiers::LQ_auto) lq = Qualifiers::LQ_explicitNone;
+        switch (SMKind) {
+        case SMF_CopyConstructor:
+          data().CopyConstructorLifetimeQual = lq; break;
+        case SMF_MoveConstructor:
+          data().MoveConstructorLifetimeQual = lq; break;
+        case SMF_CopyAssignment:
+          data().CopyAssignmentLifetimeQual = lq; break;
+        case SMF_MoveAssignment:
+          data().MoveAssignmentLifetimeQual = lq; break;
+        default: assert(!"Two special members cannot be the same function.");
+        }
+      }
     }
 
     return;
@@ -750,14 +776,18 @@ void CXXRecordDecl::addedMember(Decl *D) {
       data().DefaultedMoveAssignmentIsDeleted = true;
 
     if (T->isReferenceType() || T->isPointerType()) {
-      data().MoveConstructorLifetimeQual = std::max(
-        data().MoveConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
-      data().CopyConstructorLifetimeQual = std::max(
-        data().CopyConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
-      data().MoveAssignmentLifetimeQual = std::max(
-        data().MoveAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
-      data().CopyAssignmentLifetimeQual = std::max(
-        data().CopyAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      if (~data().DeclaredSpecialMembers & SMF_MoveConstructor)
+        data().MoveConstructorLifetimeQual = std::max(
+          data().MoveConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      if (~data().DeclaredSpecialMembers & SMF_CopyConstructor)
+        data().CopyConstructorLifetimeQual = std::max(
+          data().CopyConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      if (~data().DeclaredSpecialMembers & SMF_MoveAssignment)
+        data().MoveAssignmentLifetimeQual = std::max(
+          data().MoveAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      if (~data().DeclaredSpecialMembers & SMF_CopyAssignment)
+        data().CopyAssignmentLifetimeQual = std::max(
+          data().CopyAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
     }
 
     if (const RecordType *RecordTy = T->getAs<RecordType>()) {

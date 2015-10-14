@@ -1310,16 +1310,18 @@ public:
     return isTriviallyCopyable() && hasTrivialDefaultConstructor();
   }
 
-  Qualifiers::CXXLifetime copyConstructorLifetimeQual() const {
+  Qualifiers::CXXLifetime copyConstructorLifetimeQual() {
+    // TODO: Catch LQ_explicitNone representing export[auto] and retrieve the
+    // actual qualification from the definition.
     return (Qualifiers::CXXLifetime) data().CopyConstructorLifetimeQual;
   }
-  Qualifiers::CXXLifetime moveConstructorLifetimeQual() const {
+  Qualifiers::CXXLifetime moveConstructorLifetimeQual() {
     return (Qualifiers::CXXLifetime) data().MoveConstructorLifetimeQual;
   }
-  Qualifiers::CXXLifetime copyAssignmentLifetimeQual() const {
+  Qualifiers::CXXLifetime copyAssignmentLifetimeQual() {
     return (Qualifiers::CXXLifetime) data().CopyAssignmentLifetimeQual;
   }
-  Qualifiers::CXXLifetime moveAssignmentLifetimeQual() const {
+  Qualifiers::CXXLifetime moveAssignmentLifetimeQual() {
     return (Qualifiers::CXXLifetime) data().MoveAssignmentLifetimeQual;
   }
 
