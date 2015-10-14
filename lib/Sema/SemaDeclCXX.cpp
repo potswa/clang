@@ -10049,6 +10049,8 @@ CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
   if (Const)
     ArgType = ArgType.withConst();
   ArgType = Context.getLValueReferenceType(ArgType);
+  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+            ClassDecl->copyAssignmentLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXCopyAssignment,
@@ -10077,6 +10079,7 @@ CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, CopyAssignment);
+  EPI.AccessorSpec = Qualifiers::LQ_ref;
   CopyAssignment->setType(Context.getFunctionType(RetType, ArgType, EPI));
 
   // Add the parameter to the operator.
@@ -10440,6 +10443,8 @@ CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
   QualType ArgType = Context.getTypeDeclType(ClassDecl);
   QualType RetType = Context.getLValueReferenceType(ArgType);
   ArgType = Context.getRValueReferenceType(ArgType);
+  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+            ClassDecl->moveAssignmentLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXMoveAssignment,
@@ -10468,6 +10473,7 @@ CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, MoveAssignment);
+  EPI.AccessorSpec = Qualifiers::LQ_ref;
   MoveAssignment->setType(Context.getFunctionType(RetType, ArgType, EPI));
 
   // Add the parameter to the operator.
@@ -10873,6 +10879,8 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
   if (Const)
     ArgType = ArgType.withConst();
   ArgType = Context.getLValueReferenceType(ArgType);
+  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+            ClassDecl->copyConstructorLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXCopyConstructor,
@@ -11049,6 +11057,8 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
 
   QualType ClassType = Context.getTypeDeclType(ClassDecl);
   QualType ArgType = Context.getRValueReferenceType(ClassType);
+  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+            ClassDecl->moveConstructorLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXMoveConstructor,

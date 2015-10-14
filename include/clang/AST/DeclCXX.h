@@ -410,6 +410,18 @@ class CXXRecordDecl : public RecordDecl {
     /// members which have not yet been declared.
     unsigned DeclaredNonTrivialSpecialMembers : 6;
 
+    /// \brief The lifetime qualification kind (none, by-value, full) of
+    /// parameters to the special members. While the class is incomplete,
+    /// these values are as-implicit. When the class is completed, the values
+    /// are updated to reflect any user-declared specification. If move
+    /// operations are not declared, their values reflect copy operations.
+    /// @{
+    unsigned MoveConstructorLifetimeQual : 2;
+    unsigned CopyConstructorLifetimeQual : 2;
+    unsigned MoveAssignmentLifetimeQual : 2;
+    unsigned CopyAssignmentLifetimeQual : 2;
+    /// @}
+
     /// \brief True when this class has a destructor with no semantic effect.
     bool HasIrrelevantDestructor : 1;
 
@@ -1296,6 +1308,19 @@ public:
   ///    is trivially copiable."
   bool isTrivial() const {
     return isTriviallyCopyable() && hasTrivialDefaultConstructor();
+  }
+
+  Qualifiers::CXXLifetime copyConstructorLifetimeQual() const {
+    return (Qualifiers::CXXLifetime) data().CopyConstructorLifetimeQual;
+  }
+  Qualifiers::CXXLifetime moveConstructorLifetimeQual() const {
+    return (Qualifiers::CXXLifetime) data().MoveConstructorLifetimeQual;
+  }
+  Qualifiers::CXXLifetime copyAssignmentLifetimeQual() const {
+    return (Qualifiers::CXXLifetime) data().CopyAssignmentLifetimeQual;
+  }
+  Qualifiers::CXXLifetime moveAssignmentLifetimeQual() const {
+    return (Qualifiers::CXXLifetime) data().MoveAssignmentLifetimeQual;
   }
 
   /// \brief Determine whether this class is a literal type.

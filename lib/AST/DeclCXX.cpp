@@ -60,6 +60,10 @@ CXXRecordDecl::DefinitionData::DefinitionData(CXXRecordDecl *D)
     DefaultedDestructorIsDeleted(false),
     HasTrivialSpecialMembers(SMF_All),
     DeclaredNonTrivialSpecialMembers(0),
+    MoveConstructorLifetimeQual(0),
+    CopyConstructorLifetimeQual(0),
+    MoveAssignmentLifetimeQual(0),
+    CopyAssignmentLifetimeQual(0),
     HasIrrelevantDestructor(true),
     HasConstexprNonCopyMoveConstructor(false),
     DefaultedDefaultConstructorIsConstexpr(true),
@@ -383,6 +387,15 @@ void CXXRecordDecl::addedClassSubobject(CXXRecordDecl *Subobj) {
     data().NeedOverloadResolutionForMoveConstructor = true;
     data().NeedOverloadResolutionForDestructor = true;
   }
+
+  data().MoveConstructorLifetimeQual = std::max<unsigned>(
+    data().MoveConstructorLifetimeQual, Subobj->moveConstructorLifetimeQual());
+  data().CopyConstructorLifetimeQual = std::max<unsigned>(
+    data().CopyConstructorLifetimeQual, Subobj->copyConstructorLifetimeQual());
+  data().MoveAssignmentLifetimeQual = std::max<unsigned>(
+    data().MoveAssignmentLifetimeQual, Subobj->moveAssignmentLifetimeQual());
+  data().CopyAssignmentLifetimeQual = std::max<unsigned>(
+    data().CopyAssignmentLifetimeQual, Subobj->copyAssignmentLifetimeQual());
 }
 
 bool CXXRecordDecl::hasAnyDependentBases() const {
@@ -735,6 +748,17 @@ void CXXRecordDecl::addedMember(Decl *D) {
     //    -- a non-static data member of reference type
     if (T->isReferenceType())
       data().DefaultedMoveAssignmentIsDeleted = true;
+
+    if (T->isReferenceType() || T->isPointerType()) {
+      data().MoveConstructorLifetimeQual = std::max(
+        data().MoveConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      data().CopyConstructorLifetimeQual = std::max(
+        data().CopyConstructorLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      data().MoveAssignmentLifetimeQual = std::max(
+        data().MoveAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
+      data().CopyAssignmentLifetimeQual = std::max(
+        data().CopyAssignmentLifetimeQual, (unsigned) Qualifiers::LQ_value);
+    }
 
     if (const RecordType *RecordTy = T->getAs<RecordType>()) {
       CXXRecordDecl* FieldRec = cast<CXXRecordDecl>(RecordTy->getDecl());
@@ -1374,6 +1398,14 @@ void CXXRecordDecl::completeDefinition(CXXFinalOverriderMap *FinalOverriders) {
   for (conversion_iterator I = conversion_begin(), E = conversion_end();
        I != E; ++I)
     I.setAccess((*I)->getAccess());
+
+  // Default non-existent move operation lifetime qualifications to copying.
+  if (!hasMoveConstructor()) {
+    data().MoveConstructorLifetimeQual = copyConstructorLifetimeQual();
+  }
+  if (!hasMoveAssignment()) {
+    data().MoveAssignmentLifetimeQual = copyAssignmentLifetimeQual();
+  }
 }
 
 bool CXXRecordDecl::mayBeAbstract() const {
