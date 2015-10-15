@@ -5801,12 +5801,6 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
         F = static_cast<FunctionProtoType const *>
             (Ect->getConstructor()->getType().getCanonicalType().getTypePtr());
         args = Ect->arguments();
-        
-        // Temporaries are materialized inside redundant move operations. (Why?)
-        // Ignore the constructor and use the enclosing lifetime association.
-        if (Ect->getConstructor()->isMoveConstructor() &&
-            isa<MaterializeTemporaryExpr>(*args.begin()))
-          return Visit(*args.begin(), Extend);
       
       } else if (CallExpr *Ec = dyn_cast<CallExpr>(E)) {
         F = dyn_cast<FunctionProtoType>
@@ -5866,17 +5860,32 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
 static bool
 performReferenceExtension(Expr *Init,
                           const InitializedEntity *ExtendingEntity, Sema &S) {
-  bool didExtend = false;
+  enum {
+    didExtend = 1,
+    didMaterialize = 2
+  };
+  int state = 0;
   S.TraverseLifetimeAssociations(Init, [&](Expr *Sub, bool Extend, Sema &S) {
-    MaterializeTemporaryExpr *ME;
-    if (Extend && (ME = dyn_cast<MaterializeTemporaryExpr>(Sub))) {
+    if (! Extend) return true;
+    
+    MaterializeTemporaryExpr *ME = dyn_cast<MaterializeTemporaryExpr>(Sub);
+    if (ME) state |= didMaterialize;
+    else if (isa<CXXBindTemporaryExpr>(Sub)) {
+      if (~state & didMaterialize)
+        // Only handle the simple, prvalue case. References are already bound.
+        ME = new (S.Context) MaterializeTemporaryExpr(Sub->getType(), Sub, false);
+      // The BindTemporary will be seen again iff we just materialized it.
+      state ^= didMaterialize;
+    }
+    
+    if (ME) {
       ME->setExtendingDecl(ExtendingEntity->getDecl(),
                            ExtendingEntity->allocateManglingNumber());
-      didExtend = true;
+      state |= didExtend;
     }
     return true;
   });
-  return didExtend;
+  return state & didExtend;
 }
 
 static void warnOnLifetimeExtension(Sema &S, const InitializedEntity &Entity,
