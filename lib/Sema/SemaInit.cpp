@@ -5824,8 +5824,17 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
         return true;
       }
       
+      // List initializers extend according to the field type.
+      // TODO: This does not account for export[&] move constructors.
+      if (InitListExpr *Eil = dyn_cast<InitListExpr>(E)) {
+        for (Stmt *elemS : Eil->children()) {
+          Expr *elem = static_cast<Expr *>(elemS);
+          if (!Visit(elem, elem->isGLValue())) return false;
+        }
+        return true;
+      
       // Catch operations that may produce a pointer to a temporary.
-      if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
+      } else if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
         if (Eun->getOpcode() == UO_AddrOf) {
           Extend = true;
         }
