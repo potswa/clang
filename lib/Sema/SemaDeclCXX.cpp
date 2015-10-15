@@ -10049,8 +10049,9 @@ CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
   if (Const)
     ArgType = ArgType.withConst();
   ArgType = Context.getLValueReferenceType(ArgType);
-  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
-            ClassDecl->copyAssignmentLifetimeQual());
+  if (ClassDecl->copyAssignmentLifetimeQual())
+    ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+              ClassDecl->copyAssignmentLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXCopyAssignment,
@@ -10443,8 +10444,9 @@ CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
   QualType ArgType = Context.getTypeDeclType(ClassDecl);
   QualType RetType = Context.getLValueReferenceType(ArgType);
   ArgType = Context.getRValueReferenceType(ArgType);
-  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
-            ClassDecl->moveAssignmentLifetimeQual());
+  if (ClassDecl->moveAssignmentLifetimeQual())
+    ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+              ClassDecl->moveAssignmentLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXMoveAssignment,
@@ -10879,8 +10881,9 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
   if (Const)
     ArgType = ArgType.withConst();
   ArgType = Context.getLValueReferenceType(ArgType);
-  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
-            ClassDecl->copyConstructorLifetimeQual());
+  if (ClassDecl->copyConstructorLifetimeQual())
+    ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+              ClassDecl->copyConstructorLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXCopyConstructor,
@@ -11057,8 +11060,9 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
 
   QualType ClassType = Context.getTypeDeclType(ClassDecl);
   QualType ArgType = Context.getRValueReferenceType(ClassType);
-  ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
-            ClassDecl->moveConstructorLifetimeQual());
+  if (ClassDecl->moveConstructorLifetimeQual())
+    ArgType = Context.getCXXLifetimeQualifiedType(ArgType,
+              ClassDecl->moveConstructorLifetimeQual());
 
   bool Constexpr = defaultedSpecialMemberIsConstexpr(*this, ClassDecl,
                                                      CXXMoveConstructor,
