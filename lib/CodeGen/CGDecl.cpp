@@ -1722,9 +1722,8 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
   llvm::Value *ArgVal = (DoStore ? Arg.getDirectValue() : nullptr);
 
   LValue lv = MakeAddrLValue(DeclPtr, Ty);
-  if (IsScalar) {
-    Qualifiers qs = Ty.getQualifiers();
-    if (Qualifiers::ObjCLifetime lt = qs.getObjCLifetime()) {
+  if (IsScalar && Ty->isObjCIndirectLifetimeType()) {
+    if (Qualifiers::ObjCLifetime lt = Ty.getObjCLifetime()) {
       // We honor __attribute__((ns_consumed)) for types with lifetime.
       // For __strong, it's handled by just skipping the initial retain;
       // otherwise we have to balance out the initial +1 with an extra
@@ -1737,7 +1736,7 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
         const ObjCMethodDecl *method = cast<ObjCMethodDecl>(CurCodeDecl);
         assert(&D == method->getSelfDecl());
         assert(lt == Qualifiers::OCL_Strong);
-        assert(qs.hasConst());
+        assert(Ty.isConstQualified());
         assert(method->getMethodFamily() != OMF_init);
         (void) method;
         lt = Qualifiers::OCL_ExplicitNone;
