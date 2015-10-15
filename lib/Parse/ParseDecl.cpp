@@ -4701,7 +4701,7 @@ bool Parser::isConstructorDeclarator(bool IsUnqualified) {
   // specifier, in which case we have the start of a parameter and,
   // therefore, we know that this is a constructor.
   bool IsConstructor = false;
-  if (isDeclarationSpecifier())
+  if (isDeclarationSpecifier() || Tok.is(tok::kw_export))
     IsConstructor = true;
   else if (Tok.is(tok::identifier) ||
            (Tok.is(tok::annot_cxxscope) && NextToken().is(tok::identifier))) {
