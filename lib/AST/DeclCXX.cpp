@@ -634,8 +634,7 @@ void CXXRecordDecl::addedMember(Decl *D) {
         data().PlainOldData = false;
       }
 
-      if (SMKind & (SMF_CopyConstructor|SMF_MoveConstructor|
-                    SMF_CopyAssignment|SMF_MoveAssignment)) {
+      if (int SMLQ = SMKind & ~(SMF_DefaultConstructor|SMF_Destructor)) {
         int lq = Method->getParamDecl(0)->getType().
                  getQualifiers().getCXXLifetime();
         // Use LQ_none as canonical because it is zero.
@@ -643,7 +642,7 @@ void CXXRecordDecl::addedMember(Decl *D) {
         // If the declared type is export[auto], calculate it lazily using
         // the definition.
         if (lq == Qualifiers::LQ_auto) lq = Qualifiers::LQ_explicitNone;
-        switch (SMKind) {
+        switch (SMLQ) {
         case SMF_CopyConstructor:
           data().CopyConstructorLifetimeQual = lq; break;
         case SMF_MoveConstructor:
