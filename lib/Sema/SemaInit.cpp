@@ -5832,9 +5832,18 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
           if (!Visit(elem, elem->isGLValue())) return false;
         }
         return true;
-      
+      }
+      // Lambdas associate with captures (including implicit ones and \c this).
+      if (LambdaExpr *El = dyn_cast<LambdaExpr>(E)) {
+        LambdaExpr::capture_iterator cap = El->capture_begin();
+        for (Expr *init : El->capture_inits()) {
+          if (!Visit(init, cap->getCaptureKind() == LCK_ByRef)) return false;
+          ++ cap;
+        }
+        return true;
+      }
       // Catch operations that may produce a pointer to a temporary.
-      } else if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
+      if (UnaryOperator *Eun = dyn_cast<UnaryOperator>(E)) {
         if (Eun->getOpcode() == UO_AddrOf) {
           Extend = true;
         }
