@@ -5858,7 +5858,8 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
           return Visit(Ebin->getRHS(), Extend);
         }
       } else if (isa<CXXNewExpr>(E) || isa<UnaryExprOrTypeTraitExpr>(E) ||
-                 isa<CXXUuidofExpr>(E) || isa<CXXTypeidExpr>(E)) {
+                 isa<CXXUuidofExpr>(E) || isa<CXXTypeidExpr>(E) ||
+                 isa<StmtExpr>(E) || isa<DesignatedInitExpr>(E) /* TODO */) {
         return true;
       }
       
