@@ -46,7 +46,8 @@ bool Qualifiers::isStrictSupersetOf(Qualifiers Other) const {
 
 bool QualType::isCanonicalAsParam() const {
   if (!isCanonical()) return false;
-  if (hasLocalQualifiers()) {
+  if (getLocalFastQualifiers()) return false;
+  if (hasLocalNonFastQualifiers()) {
     Qualifiers lq = getExtQualsUnsafe()->getQualifiers();
     if (! getTypePtr()->isObjCIndirectLifetimeType()) {
       if (lq.getCXXLifetime() == Qualifiers::LQ_explicitNone)
