@@ -1687,9 +1687,11 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
   ExprValueKind VK = VK_LValue;
   ExprObjectKind OK = OK_Ordinary;
   if (!IsArrow) {
-    if (BaseExpr->getObjectKind() == OK_Ordinary) {
-      ExprValueKind BVK = BaseExpr->getValueKind();
-      if (BVK != VK_LValue)
+    // Non-ordinary objects are coordinated with ClassifyMemberExpr()
+    // in ExprClassification.cpp.
+    if (BaseExpr->getObjectKind() == OK_Ordinary
+        && !isa<PseudoObjectExpr>(BaseExpr)) {
+      if (BaseExpr->getValueKind() != VK_LValue)
         VK = VK_XValue;
     } else
       VK = VK_RValue;

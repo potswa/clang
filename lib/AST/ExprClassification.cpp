@@ -461,11 +461,14 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     // arrow access, it always is an lvalue.
     if (E->isArrow())
       return Cl::CL_LValue;
-    // ObjC property accesses are not lvalues, but get special treatment.
+    // ObjC property accesses etc. are not lvalues, but get special treatment.
     Expr *Base = E->getBase()->IgnoreParens();
-    if (isa<ObjCPropertyRefExpr>(Base))
+    if (isa<ObjCPropertyRefExpr>(Base) || isa<PseudoObjectExpr>(Base))
       return Cl::CL_SubObjCPropertySetting;
-    return ClassifyInternal(Ctx, Base);
+    Cl::Kinds BaseKind = ClassifyInternal(Ctx, Base);
+    // TODO: Without C++ there are no xvalues.
+    if (BaseKind == Cl::CL_SubObjCPropertySetting) BaseKind = Cl::CL_XValue;
+    return BaseKind;
   }
 
   NamedDecl *Member = E->getMemberDecl();
@@ -488,10 +491,12 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
     if (E->isArrow())
       return Cl::CL_LValue;
     Expr *Base = E->getBase()->IgnoreParenImpCasts();
-    if (isa<ObjCPropertyRefExpr>(Base))
+    if (isa<ObjCPropertyRefExpr>(Base) || isa<PseudoObjectExpr>(Base))
       return Cl::CL_SubObjCPropertySetting;
     Cl::Kinds BaseKind = ClassifyInternal(Ctx, E->getBase());
-    return BaseKind == Cl::CL_ClassTemporary? Cl::CL_XValue : BaseKind;
+    if (BaseKind == Cl::CL_SubObjCPropertySetting || BaseKind == Cl::CL_ClassTemporary)
+      BaseKind = Cl::CL_XValue;
+    return BaseKind;
   }
 
   //   -- If E2 is a [...] member function, [...]
