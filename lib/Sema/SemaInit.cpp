@@ -5796,17 +5796,17 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
       
       // Process function calls according to the signature.
       FunctionProtoType const *F = nullptr;
-      CallExpr::arg_range args = { {}, {} };
+      CallExpr::arg_iterator arg;
       if (CXXConstructExpr *Ect = dyn_cast<CXXConstructExpr>(E)) {
         F = static_cast<FunctionProtoType const *>
             (Ect->getConstructor()->getType().getCanonicalType().getTypePtr());
-        args = Ect->arguments();
+        arg = Ect->arg_begin();
       
       } else if (CallExpr *Ec = dyn_cast<CallExpr>(E)) {
         F = dyn_cast<FunctionProtoType>
               (Ec->getCallee()->getType().getCanonicalType().getTypePtr());
         if (!F) return true; // Prune FunctionNoProtoType (K&R) calls.
-        args = Ec->arguments();
+        arg = Ec->arg_begin();
         
         // If this is a member call, associate the object expression.
         if (Qualifiers::CXXLifetime lq = F->getAccessorSpec()) {
@@ -5815,11 +5815,10 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
         }
       }
       if (F) {
-        unsigned px = 0;
-        for (Expr *arg : args) {
-          Qualifiers::CXXLifetime lq = F->getParamType(px).getCXXLifetime();
-          if (!Visit(arg, lq == Qualifiers::LQ_ref)) return false;
-          ++ px;
+        for (QualType param : F->getParamTypes()) {
+          Qualifiers::CXXLifetime lq = param.getCXXLifetime();
+          if (!Visit(*arg, lq == Qualifiers::LQ_ref)) return false;
+          ++ arg;
         }
         return true;
       }
