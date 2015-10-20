@@ -463,12 +463,9 @@ static Cl::Kinds ClassifyMemberExpr(ASTContext &Ctx, const MemberExpr *E) {
       return Cl::CL_LValue;
     // ObjC property accesses etc. are not lvalues, but get special treatment.
     Expr *Base = E->getBase()->IgnoreParens();
-    if (isa<ObjCPropertyRefExpr>(Base) || isa<PseudoObjectExpr>(Base))
+    if (isa<ObjCPropertyRefExpr>(Base))
       return Cl::CL_SubObjCPropertySetting;
-    Cl::Kinds BaseKind = ClassifyInternal(Ctx, Base);
-    // TODO: Without C++ there are no xvalues.
-    if (BaseKind == Cl::CL_SubObjCPropertySetting) BaseKind = Cl::CL_XValue;
-    return BaseKind;
+    return ClassifyInternal(Ctx, Base);
   }
 
   NamedDecl *Member = E->getMemberDecl();
