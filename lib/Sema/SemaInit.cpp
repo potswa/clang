@@ -5706,75 +5706,6 @@ InitializedEntityOutlivesFullExpression(const InitializedEntity &Entity) {
   llvm_unreachable("unknown entity kind");
 }
 
-/// Determine the declaration which an initialized entity ultimately refers to,
-/// for the purpose of lifetime-extending a temporary bound to a reference in
-/// the initialization of \p Entity.
-static const InitializedEntity *getEntityForTemporaryLifetimeExtension(
-    const InitializedEntity *Entity,
-    const InitializedEntity *FallbackDecl = nullptr) {
-  // C++11 [class.temporary]p5:
-  switch (Entity->getKind()) {
-  case InitializedEntity::EK_Variable:
-    //   The temporary [...] persists for the lifetime of the reference
-    return Entity;
-
-  case InitializedEntity::EK_Member:
-    // For subobjects, we look at the complete object.
-    if (Entity->getParent())
-      return getEntityForTemporaryLifetimeExtension(Entity->getParent(),
-                                                    Entity);
-
-    //   except:
-    //   -- A temporary bound to a reference member in a constructor's
-    //      ctor-initializer persists until the constructor exits.
-    return Entity;
-
-  case InitializedEntity::EK_Parameter:
-  case InitializedEntity::EK_Parameter_CF_Audited:
-    //   -- A temporary bound to a reference parameter in a function call
-    //      persists until the completion of the full-expression containing
-    //      the call.
-  case InitializedEntity::EK_Result:
-    //   -- The lifetime of a temporary bound to the returned value in a
-    //      function return statement is not extended; the temporary is
-    //      destroyed at the end of the full-expression in the return statement.
-  case InitializedEntity::EK_New:
-    //   -- A temporary bound to a reference in a new-initializer persists
-    //      until the completion of the full-expression containing the
-    //      new-initializer.
-    return nullptr;
-
-  case InitializedEntity::EK_Temporary:
-  case InitializedEntity::EK_CompoundLiteralInit:
-  case InitializedEntity::EK_RelatedResult:
-    // We don't yet know the storage duration of the surrounding temporary.
-    // Assume it's got full-expression duration for now, it will patch up our
-    // storage duration if that's not correct.
-    return nullptr;
-
-  case InitializedEntity::EK_ArrayElement:
-    // For subobjects, we look at the complete object.
-    return getEntityForTemporaryLifetimeExtension(Entity->getParent(),
-                                                  FallbackDecl);
-
-  case InitializedEntity::EK_Base:
-  case InitializedEntity::EK_Delegating:
-    // We can reach this case for aggregate initialization in a constructor:
-    //   struct A { int &&r; };
-    //   struct B : A { B() : A{0} {} };
-    // In this case, use the innermost field decl as the context.
-    return FallbackDecl;
-
-  case InitializedEntity::EK_BlockElement:
-  case InitializedEntity::EK_LambdaCapture:
-  case InitializedEntity::EK_Exception:
-  case InitializedEntity::EK_VectorElement:
-  case InitializedEntity::EK_ComplexElement:
-    return nullptr;
-  }
-  llvm_unreachable("unknown entity kind");
-}
-
 void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
   struct Traversal { // This is essentially a recursive lambda closure.
     Sema &S;
@@ -6287,16 +6218,6 @@ InitializationSequence::Perform(Sema &S,
       if (S.CheckExceptionSpecCompatibility(CurInit.get(), DestType))
         return ExprError();
 
-      // Even though we didn't materialize a temporary, the binding may still
-      // extend the lifetime of a temporary. This happens if we bind a reference
-      // to the result of a cast to reference type.
-      if (const InitializedEntity *ExtendingEntity =
-              getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(CurInit.get(), ExtendingEntity,S))
-          warnOnLifetimeExtension(S, Entity, CurInit.get(),
-                                  /*IsInitializerList=*/false,
-                                  ExtendingEntity->getDecl());
-
       break;
 
     case SK_BindReferenceToTemporary: {
@@ -6311,14 +6232,6 @@ InitializationSequence::Perform(Sema &S,
       MaterializeTemporaryExpr *MTE = new (S.Context) MaterializeTemporaryExpr(
           Entity.getType().getNonReferenceType(), CurInit.get(),
           Entity.getType()->isLValueReferenceType());
-
-      // Maybe lifetime-extend the temporary's subobjects to match the
-      // entity's lifetime.
-      if (const InitializedEntity *ExtendingEntity =
-              getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(MTE, ExtendingEntity,S))
-          warnOnLifetimeExtension(S, Entity, CurInit.get(), /*IsInitializerList=*/false,
-                                  ExtendingEntity->getDecl());
 
       // If we're binding to an Objective-C object that has lifetime, we
       // need cleanups. Likewise if we're extending this temporary to automatic
@@ -6720,15 +6633,6 @@ InitializationSequence::Perform(Sema &S,
           MaterializeTemporaryExpr(CurInit.get()->getType(), CurInit.get(),
                                    /*BoundToLvalueReference=*/false);
 
-      // Maybe lifetime-extend the array temporary's subobjects to match the
-      // entity's lifetime.
-      if (const InitializedEntity *ExtendingEntity =
-              getEntityForTemporaryLifetimeExtension(&Entity))
-        if (performReferenceExtension(MTE, ExtendingEntity,S))
-          warnOnLifetimeExtension(S, Entity, CurInit.get(),
-                                  /*IsInitializerList=*/true,
-                                  ExtendingEntity->getDecl());
-
       // Wrap it in a construction of a std::initializer_list<T>.
       CurInit = new (S.Context) CXXStdInitializerListExpr(Step->Type, MTE);
 
@@ -6766,6 +6670,12 @@ InitializationSequence::Perform(Sema &S,
     }
     }
   }
+
+  // Extend associated temporaries to match the entity's lifetime.
+  if (Entity.getKind() == InitializedEntity::EK_Variable && CurInit.get())
+    if (performReferenceExtension(CurInit.get(), &Entity,S))
+      warnOnLifetimeExtension(S, Entity, CurInit.get(), /*IsInitializerList=*/false,
+                              Entity.getDecl());
 
   // Diagnose non-fatal problems with the completed initialization.
   if (Entity.getKind() == InitializedEntity::EK_Member &&
