@@ -1690,9 +1690,9 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     // Non-ordinary objects are coordinated with ClassifyMemberExpr()
     // in ExprClassification.cpp.
     if (BaseExpr->getObjectKind() == OK_Ordinary
-        && S.getLangOpts().CPlusPlus
         && !isa<PseudoObjectExpr>(BaseExpr)) {
-      if (BaseExpr->getValueKind() != VK_LValue)
+      if (BaseExpr->getValueKind() != VK_LValue
+          && S.getLangOpts().CPlusPlus)
         VK = VK_XValue;
     } else
       VK = VK_RValue;
