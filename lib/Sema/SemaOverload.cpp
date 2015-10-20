@@ -989,6 +989,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
       (OldType->getNumParams() != NewType->getNumParams() ||
        OldType->isVariadic() != NewType->isVariadic() ||
        !FunctionParamTypesAreEqual(OldType, NewType)))
+       // TODO: C++ lifetime qualifications don't overload.
     return true;
 
   // C++ [temp.over.link]p4:
@@ -2601,6 +2602,47 @@ bool Sema::FunctionParamTypesAreEqual(const FunctionProtoType *OldType,
   return true;
 }
 
+/// Determine whether T1 forms a reference-to-function that can be initialized
+/// from T2 by adjusting C++ lifetime qualifiers.
+static Sema::ReferenceCompareResult
+CompareLifetimeQualification(const Type *T1, const Type *T2) {
+  FunctionProtoType const *F1, *F2;
+  Sema::ReferenceCompareResult result = Sema::Ref_Compatible;
+  
+  if (!(F1 = dyn_cast<FunctionProtoType>(T1)) ||
+      !(F2 = dyn_cast<FunctionProtoType>(T2)))
+    return Sema::Ref_Incompatible;
+  
+  if (F1->getReturnType() != F2->getReturnType()
+      || F1->getNumParams() != F2->getNumParams())
+    return Sema::Ref_Incompatible;
+  
+  
+  if (F1->getAccessorSpec() < F2->getAccessorSpec())
+    result = std::min(result, Sema::Ref_Related);
+  else if (F2->getAccessorSpec() < F1->getAccessorSpec())
+    result = std::min(result, Sema::Ref_Compatible_With_Added_Qualification);
+  
+  FunctionProtoType::param_type_iterator PI1, PI2;
+  for (PI1 = F1->param_type_begin(), PI2 = F2->param_type_begin();
+       PI1 != F1->param_type_end(); ++PI1, ++PI2) {
+    QualType P1 = *PI1, P2 = *PI2;
+    Qualifiers Q1 = P1.getQualifiers(), Q2 = P2.getQualifiers();
+    if (P1.getUnqualifiedType() != P2.getUnqualifiedType())
+      return Sema::Ref_Incompatible;
+    
+    if (P1->isObjCIndirectLifetimeType()) continue;
+    
+    Qualifiers::CXXLifetime L1 = Q1.getCXXLifetime(), L2 = Q2.getCXXLifetime();
+    if (L1 < L2)
+      result = std::min(result, Sema::Ref_Related);
+    else if (L2 < L1)
+      result = std::min(result, Sema::Ref_Compatible_With_Added_Qualification);
+  }
+  
+  return result;
+}
+
 /// CheckPointerConversion - Check the pointer conversion from the
 /// expression From to the type ToType. This routine checks for
 /// ambiguous or inaccessible derived-to-base pointer
@@ -2867,13 +2909,19 @@ Sema::IsQualificationConversion(QualType FromType, QualType ToType,
     PreviousToQualsIncludeConst
       = PreviousToQualsIncludeConst && ToQuals.hasConst();
   }
+  
+  if (!UnwrappedAnyPointer) return false;
 
-  // We are left with FromType and ToType being the pointee types
-  // after unwrapping the original FromType and ToType the same number
-  // of types. If we unwrapped any pointers, and if FromType and
-  // ToType have the same unqualified type (since we checked
-  // qualifiers above), then this is a qualification conversion.
-  return UnwrappedAnyPointer && Context.hasSameUnqualifiedType(FromType,ToType);
+  if (!FromType->isFunctionType())
+    // We are left with FromType and ToType being the pointee types
+    // after unwrapping the original FromType and ToType the same number
+    // of types. If we unwrapped any pointers, and if FromType and
+    // ToType have the same unqualified type (since we checked
+    // qualifiers above), then this is a qualification conversion.
+    return Context.hasSameUnqualifiedType(FromType,ToType);
+
+  return CompareLifetimeQualification(ToType.getTypePtr(), FromType.getTypePtr())
+         >= Ref_Compatible_With_Added_Qualification;
 }
 
 /// \brief - Determine whether this is a conversion from a scalar type to an
@@ -3735,6 +3783,27 @@ CompareQualificationConversions(Sema &S,
     // If the types after this point are equivalent, we're done.
     if (S.Context.hasSameUnqualifiedType(T1, T2))
       break;
+
+    Sema::ReferenceCompareResult lqcomp =
+      CompareLifetimeQualification(T1.getTypePtr(), T2.getTypePtr());
+    // This is not a function type. This won't compare unrelated fns.
+    if (lqcomp == Sema::Ref_Incompatible) continue;
+    // The function types are identical.
+    if (lqcomp == Sema::Ref_Compatible) break;
+
+    // T1 adds more lifetime qualifiers than T2.
+    if (lqcomp == Sema::Ref_Compatible_With_Added_Qualification) {
+      if (Result == ImplicitConversionSequence::Worse)
+        return ImplicitConversionSequence::Indistinguishable;
+      Result = ImplicitConversionSequence::Better;
+    }
+
+    lqcomp = CompareLifetimeQualification(T1.getTypePtr(), T2.getTypePtr());
+    if (lqcomp == Sema::Ref_Compatible_With_Added_Qualification) {
+      if (Result == ImplicitConversionSequence::Better)
+        return ImplicitConversionSequence::Indistinguishable;
+      Result = ImplicitConversionSequence::Worse;
+    }
   }
 
   // Check that the winning standard conversion sequence isn't using
@@ -4006,7 +4075,7 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
            Context.canBindObjCObjectType(UnqualT1, UnqualT2))
     ObjCConversion = true;
   else
-    return Ref_Incompatible;
+    return CompareLifetimeQualification(T1.getTypePtr(), T2.getTypePtr());
 
   // At this point, we know that T1 and T2 are reference-related (at
   // least).
