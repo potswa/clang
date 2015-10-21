@@ -4937,14 +4937,17 @@ Sema::PerformObjectArgumentInitialization(Expr *From,
     Method->getThisType(Context)->getAs<PointerType>()->getPointeeType();
 
   Expr::Classification FromClassification;
+  bool Materialize;
   if (const PointerType *PT = From->getType()->getAs<PointerType>()) {
     FromRecordType = PT->getPointeeType();
     DestType = Method->getThisType(Context);
     FromClassification = Expr::Classification::makeSimpleLValue();
+    Materialize = false;
   } else {
     FromRecordType = From->getType();
     DestType = ImplicitParamRecordType;
     FromClassification = From->Classify(Context);
+    Materialize = true;
   }
 
   // Note that we always use the true parent context when performing
@@ -4980,9 +4983,15 @@ Sema::PerformObjectArgumentInitialization(Expr *From,
     From = FromRes.get();
   }
 
+  ExprValueKind VK = From->getValueKind();
+  if (Materialize && VK == VK_RValue) {
+    VK = VK_XValue;
+    From = new (Context) MaterializeTemporaryExpr(From->getType(), From,
+                                    ICS.Standard.IsLvalueReference);
+  }
+
   if (!Context.hasSameType(From->getType(), DestType))
-    From = ImpCastExprToType(From, DestType, CK_NoOp,
-                             From->getValueKind()).get();
+    From = ImpCastExprToType(From, DestType, CK_NoOp, VK).get();
   return From;
 }
 
