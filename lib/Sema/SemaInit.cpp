@@ -5734,21 +5734,31 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
         arg = Ect->arg_begin();
       
       } else if (CallExpr *Ec = dyn_cast<CallExpr>(E)) {
-        F = dyn_cast<FunctionProtoType>
-              (Ec->getCallee()->getType().getCanonicalType().getTypePtr());
-        if (!F) return true; // Prune FunctionNoProtoType (K&R) calls.
-        arg = Ec->arg_begin();
-        
-        // If this is a member call, associate the object expression.
-        if (Qualifiers::CXXLifetime lq = F->getAccessorSpec()) {
-          auto Em = static_cast<CXXMemberCallExpr *>(Ec);
-          Visit(Em->getImplicitObjectArgument(), lq == Qualifiers::LQ_ref);
+        if (CXXMemberCallExpr *Emc = dyn_cast<CXXMemberCallExpr>(Ec)) {
+          assert (Emc->getCallee()->isBoundMemberFunction(S.Context));
+          assert (isa<FunctionProtoType>(Expr::findBoundMemberType(Emc->getCallee()).getTypePtr()));
+          F = static_cast<FunctionProtoType const *>(Expr::findBoundMemberType(Emc->getCallee()).getCanonicalType().getTypePtr());
+          
+          // If this is a member call, associate the object expression.
+          if (Qualifiers::CXXLifetime lq = F->getAccessorSpec()) {
+            if (!Visit(Emc->getImplicitObjectArgument(), lq == Qualifiers::LQ_ref))
+              return false;
+          }
+        } else {
+          QualType calleeType = Ec->getCallee()->getType();
+          if (PointerType const *PT = dyn_cast<PointerType>(calleeType.getTypePtr()))
+            calleeType = PT->getPointeeType();
+          F = dyn_cast<FunctionProtoType>
+                (calleeType.getCanonicalType().getTypePtr());
+          if (!F) return true; // Prune FunctionNoProtoType (K&R) calls.
         }
+        arg = Ec->arg_begin();
       }
       if (F) {
         for (QualType param : F->getParamTypes()) {
-          Qualifiers::CXXLifetime lq = param.getCXXLifetime();
-          if (!Visit(*arg, lq == Qualifiers::LQ_ref)) return false;
+          if (Qualifiers::CXXLifetime lq = param.getCXXLifetime()) {
+            if (!Visit(*arg, lq == Qualifiers::LQ_ref)) return false;
+          }
           ++ arg;
         }
         return true;
@@ -5808,7 +5818,7 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
 /// \return \c true if any temporary had its lifetime extended.
 static bool
 performReferenceExtension(Expr *Init,
-                          const InitializedEntity *ExtendingEntity, Sema &S) {
+                          const InitializedEntity &ExtendingEntity, Sema &S) {
   enum {
     didExtend = 1,
     didMaterialize = 2
@@ -5820,16 +5830,13 @@ performReferenceExtension(Expr *Init,
     MaterializeTemporaryExpr *ME = dyn_cast<MaterializeTemporaryExpr>(Sub);
     if (ME) state |= didMaterialize;
     else if (isa<CXXBindTemporaryExpr>(Sub)) {
-      if (~state & didMaterialize)
-        // Only handle the simple, prvalue case. References are already bound.
-        ME = new (S.Context) MaterializeTemporaryExpr(Sub->getType(), Sub, false);
-      // The BindTemporary will be seen again iff we just materialized it.
-      state ^= didMaterialize;
+      assert (state & didMaterialize);
+      state &= ~didMaterialize;
     }
     
     if (ME) {
-      ME->setExtendingDecl(ExtendingEntity->getDecl(),
-                           ExtendingEntity->allocateManglingNumber());
+      ME->setExtendingDecl(ExtendingEntity.getDecl(),
+                           ExtendingEntity.allocateManglingNumber());
       state |= didExtend;
     }
     return true;
@@ -6673,7 +6680,7 @@ InitializationSequence::Perform(Sema &S,
 
   // Extend associated temporaries to match the entity's lifetime.
   if (Entity.getKind() == InitializedEntity::EK_Variable && CurInit.get())
-    if (performReferenceExtension(CurInit.get(), &Entity,S))
+    if (performReferenceExtension(CurInit.get(), Entity,S))
       warnOnLifetimeExtension(S, Entity, CurInit.get(), /*IsInitializerList=*/false,
                               Entity.getDecl());
 
