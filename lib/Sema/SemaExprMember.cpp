@@ -1692,8 +1692,12 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     if (BaseExpr->getObjectKind() == OK_Ordinary
         && !isa<PseudoObjectExpr>(BaseExpr)) {
       if (BaseExpr->getValueKind() != VK_LValue
-          && S.getLangOpts().CPlusPlus)
+          && S.getLangOpts().CPlusPlus) {
         VK = VK_XValue;
+        if (BaseExpr->getValueKind() == VK_RValue)
+          BaseExpr = new (S.Context)
+            MaterializeTemporaryExpr(BaseExpr->getType(), BaseExpr, false);
+      }
     } else
       VK = VK_RValue;
   }
