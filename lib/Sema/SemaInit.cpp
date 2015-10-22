@@ -5751,6 +5751,21 @@ void Sema::TraverseLifetimeAssociations(Expr *E, const LifetimeVisitor &V) {
           F = dyn_cast<FunctionProtoType>
                 (calleeType.getCanonicalType().getTypePtr());
           if (!F) return true; // Prune FunctionNoProtoType (K&R) calls.
+          
+          if (CXXOperatorCallExpr *Eoc = dyn_cast<CXXOperatorCallExpr>(E)) {
+            // Operator overloads are structured differently when resolved to a member function.
+            if (Eoc->getNumArgs() != F->getNumParams()) {
+              if (Qualifiers::CXXLifetime lq = F->getAccessorSpec()) {
+                if (!Visit(Eoc->getArg(0), lq == Qualifiers::LQ_ref)) return false;
+              }
+              for (unsigned argx = 1; argx != Eoc->getNumArgs(); ++ argx) {
+                if (Qualifiers::CXXLifetime lq = F->getParamType(argx-1).getCXXLifetime()) {
+                  if (!Visit(Eoc->getArg(argx), lq == Qualifiers::LQ_ref)) return false;
+                }
+              }
+              return true;
+            }
+          }
         }
         arg = Ec->arg_begin();
       }
